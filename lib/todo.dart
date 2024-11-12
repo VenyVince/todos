@@ -18,10 +18,24 @@ class Todo {
   });
 }
 
+//원본
+//class TodoPage extends StatefulWidget {
+  //final DateTime selectedDate;
+
+  //TodoPage({required this.selectedDate});
+
+//콜백을 받아들이도록 수정
 class TodoPage extends StatefulWidget {
   final DateTime selectedDate;
+  final Function(Todo) onTodoAdded;
+  final Function(Todo) onTodoRemoved;
 
-  TodoPage({required this.selectedDate});
+  TodoPage({
+    required this.selectedDate,
+    required this.onTodoAdded,
+    required this.onTodoRemoved,
+  });
+
 
   @override
   _TodoPageState createState() => _TodoPageState();
