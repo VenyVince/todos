@@ -1,35 +1,170 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:collection/collection.dart';
-import 'dart:math' as math;
-import 'todo.dart';
-import 'nut.dart';
 
-class MyPage extends StatelessWidget {
-  final List<Todo> todos;
-  final List<Nutrition> nutritions;
+class Nutrition {
+  String name;
+  String dosage;
+  int count;
+  bool taken;
+  DateTime date;
 
-  MyPage({required this.todos, required this.nutritions});
+  Nutrition({
+    required this.name,
+    required this.dosage,
+    required this.count,
+    required this.date,
+    this.taken = false,
+  });
+}
+//원본
+//class NutPage extends StatefulWidget {
+  //final DateTime selectedDate;
+
+  //NutPage({required this.selectedDate});
+
+//콜백을 받아드리도록 수정
+class NutPage extends StatefulWidget {
+  final DateTime selectedDate;
+  final Function(Nutrition) onNutritionAdded;
+  final Function(Nutrition) onNutritionRemoved;
+
+  NutPage({
+    required this.selectedDate,
+    required this.onNutritionAdded,
+    required this.onNutritionRemoved,
+  });
+
+
+  @override
+  _NutPageState createState() => _NutPageState();
+}
+
+class _NutPageState extends State<NutPage> {
+  final List<Nutrition> _nutritions = [];
+
+  final TextEditingController _nutritionController = TextEditingController();
+  final TextEditingController _dosageController = TextEditingController();
+  final TextEditingController _countController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
+    final filteredNutritions = _nutritions.where((nutrition) => isSameDay(nutrition.date, widget.selectedDate)).toList();
+    double percentage = _calculatePercentage(filteredNutritions);
+
     return Scaffold(
-      appBar: AppBar(title: Text('My Page')),
-      body: SingleChildScrollView(
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              '오늘의 영양제 섭취율: ${percentage.toStringAsFixed(1)}%',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+          LinearProgressIndicator(
+            value: percentage / 100,
+            backgroundColor: Colors.grey[200],
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: filteredNutritions.length,
+              itemBuilder: (context, index) {
+                return _buildNutritionItem(filteredNutritions[index]);
+              },
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddNutritionDialog,
+        child: Icon(Icons.add),
+
+      ),
+    );
+  }
+
+  Widget _buildNutritionItem(Nutrition nutrition) {
+    return Dismissible(
+      key: UniqueKey(),
+      direction: DismissDirection.endToStart,
+      onDismissed: (direction) {
+        setState(() {
+          _nutritions.remove(nutrition);
+        });
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: EdgeInsets.symmetric(horizontal: 20),
+        color: Colors.red,
+        child: Icon(Icons.delete, color: Colors.white),
+      ),
+      child: ListTile(
+        title: Text(
+          nutrition.name,
+          style: TextStyle(
+            decoration: nutrition.taken ? TextDecoration.lineThrough : null,
+          ),
+        ),
+        subtitle: Text('${nutrition.dosage} - ${nutrition.count}정'),
+        trailing: Checkbox(
+          value: nutrition.taken,
+          onChanged: (bool? value) {
+            setState(() {
+              nutrition.taken = value ?? false;
+            });
+          },
+        ),
+        leading: CircleAvatar(
+          backgroundColor: Colors.green,
+          child: Text(
+            nutrition.name[0],
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+        onTap: () => _showNutritionDetails(context, nutrition),
+      ),
+    );
+  }
+
+  void _showNutritionDetails(BuildContext context, Nutrition nutrition) {
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      isScrollControlled: true,
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.5,
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(20.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('통계', style: Theme.of(context).textTheme.headlineSmall),
+              Text(nutrition.name, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              SizedBox(height: 10),
+              Text('복용량: ${nutrition.dosage}'),
+              Text('섭취 개수: ${nutrition.count}정'),
               SizedBox(height: 20),
-              _buildTodoCompletionChart(),
-              SizedBox(height: 20),
-              _buildNutritionIntakeChart(),
-              SizedBox(height: 20),
-              _buildCorrelationAnalysis(),
-              SizedBox(height: 20),
-              _buildRecommendations(),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    nutrition.taken = !nutrition.taken;
+                  });
+                  Navigator.pop(context);
+                },
+                icon: Icon(nutrition.taken ? Icons.check_circle : Icons.circle_outlined),
+                label: Text(nutrition.taken ? '섭취 취소' : '섭취 완료'),
+              ),
+              Divider(),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _nutritions.remove(nutrition);
+                  });
+                  Navigator.pop(context);
+                },
+                icon: Icon(Icons.delete, color: Colors.white),
+                label: Text('삭제'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              ),
             ],
           ),
         ),
@@ -37,139 +172,72 @@ class MyPage extends StatelessWidget {
     );
   }
 
-  Widget _buildTodoCompletionChart() {
-    final completionRates = _calculateTodoCompletionRates();
-    return Container(
-      height: 200,
-      child: completionRates.isEmpty
-          ? Center(child: Text('할 일 데이터가 없습니다.'))
-          : LineChart(
-        LineChartData(
-          gridData: FlGridData(show: false),
-          titlesData: FlTitlesData(show: false),
-          borderData: FlBorderData(show: true),
-          minX: 0,
-          maxX: completionRates.length.toDouble() - 1,
-          minY: 0,
-          maxY: 100,
-          lineBarsData: [
-            LineChartBarData(
-              spots: completionRates.asMap().entries.map((entry) {
-                return FlSpot(entry.key.toDouble(), entry.value);
-              }).toList(),
-              isCurved: true,
-              color: Colors.blue,
-              dotData: FlDotData(show: false),
-              belowBarData: BarAreaData(show: false),
+  void _showAddNutritionDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("새 영양제 추가"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _nutritionController,
+                decoration: InputDecoration(labelText: "영양제 이름"),
+              ),
+              SizedBox(height: 16),
+              TextField(
+                controller: _dosageController,
+                decoration: InputDecoration(labelText: "복용량"),
+              ),
+              SizedBox(height: 16),
+              TextField(
+                controller: _countController,
+                decoration: InputDecoration(labelText: "섭취 개수"),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text("취소"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _addNutrition();
+                Navigator.of(context).pop();
+              },
+              child: Text("추가"),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildNutritionIntakeChart() {
-    final intakeRates = _calculateNutritionIntakeRates();
-    return Container(
-      height: 200,
-      child: intakeRates.isEmpty
-          ? Center(child: Text('영양제 데이터가 없습니다.'))
-          : BarChart(
-        BarChartData(
-          alignment: BarChartAlignment.spaceAround,
-          maxY: 100,
-          barTouchData: BarTouchData(enabled: false),
-          titlesData: FlTitlesData(show: false),
-          borderData: FlBorderData(show: false),
-          barGroups: intakeRates.asMap().entries.map((entry) {
-            return BarChartGroupData(
-              x: entry.key,
-              barRods: [BarChartRodData(toY: entry.value, color: Colors.green)],
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCorrelationAnalysis() {
-    List<double> todoCompletionRates = _calculateTodoCompletionRates();
-    List<double> nutritionIntakeRates = _calculateNutritionIntakeRates();
-
-    if (todoCompletionRates.isEmpty || nutritionIntakeRates.isEmpty) {
-      return Text('상관관계를 계산할 데이터가 충분하지 않습니다.');
+  void _addNutrition() {
+    if (_nutritionController.text.isNotEmpty &&
+        _dosageController.text.isNotEmpty &&
+        _countController.text.isNotEmpty) {
+      setState(() {
+        _nutritions.add(Nutrition(
+          name: _nutritionController.text,
+          dosage: _dosageController.text,
+          count: int.parse(_countController.text),
+          date: widget.selectedDate,
+        ));
+        _nutritionController.clear();
+        _dosageController.clear();
+        _countController.clear();
+      });
     }
-
-    double correlation = _calculateCorrelation(todoCompletionRates, nutritionIntakeRates);
-    return Text('할 일 완료율과 영양제 섭취율의 상관계수: ${correlation.toStringAsFixed(2)}');
   }
 
-  Widget _buildRecommendations() {
-    if (_calculateTodoCompletionRates().isEmpty && _calculateNutritionIntakeRates().isEmpty) {
-      return Text('추천을 생성할 데이터가 충분하지 않습니다.');
-    }
-    String recommendation = _generateRecommendation();
-    return Text('추천: $recommendation', style: TextStyle(fontWeight: FontWeight.bold));
-  }
-
-  List<double> _calculateTodoCompletionRates() {
-    // 최근 7일간의 Todo 완료율 계산
-    final now = DateTime.now();
-    return List.generate(7, (index) {
-      final date = now.subtract(Duration(days: index));
-      final todosForDay = todos.where((todo) => isSameDay(todo.date, date)).toList();
-      if (todosForDay.isEmpty) return 0.0;
-      final completedTodos = todosForDay.where((todo) => todo.isDone).length;
-      return (completedTodos / todosForDay.length) * 100;
-    }).reversed.toList();
-  }
-
-  List<double> _calculateNutritionIntakeRates() {
-    // 최근 7일간의 영양제 섭취율 계산
-    final now = DateTime.now();
-    return List.generate(7, (index) {
-      final date = now.subtract(Duration(days: index));
-      final nutritionsForDay = nutritions.where((nutrition) => isSameDay(nutrition.date, date)).toList();
-      if (nutritionsForDay.isEmpty) return 0.0;
-      final takenNutritions = nutritionsForDay.where((nutrition) => nutrition.taken).length;
-      return (takenNutritions / nutritionsForDay.length) * 100;
-    }).reversed.toList();
-  }
-
-  double _calculateCorrelation(List<double> x, List<double> y) {
-    if (x.length != y.length || x.isEmpty) return 0.0;
-
-    double sum_x = 0, sum_y = 0, sum_xy = 0;
-    double squareSum_x = 0, squareSum_y = 0;
-
-    for (int i = 0; i < x.length; i++) {
-      sum_x += x[i];
-      sum_y += y[i];
-      sum_xy += x[i] * y[i];
-      squareSum_x += x[i] * x[i];
-      squareSum_y += y[i] * y[i];
-    }
-
-    double corr = (x.length * sum_xy - sum_x * sum_y) /
-        (math.sqrt((x.length * squareSum_x - sum_x * sum_x) *
-            (x.length * squareSum_y - sum_y * sum_y)));
-
-    return corr;
-  }
-
-  String _generateRecommendation() {
-    double todoAverage = _calculateTodoCompletionRates().average;
-    double nutritionAverage = _calculateNutritionIntakeRates().average;
-
-    if (todoAverage < 50 && nutritionAverage < 50) {
-      return '할 일 완료율과 영양제 섭취율을 모두 높이는 것이 좋겠습니다.';
-    } else if (todoAverage < 50) {
-      return '할 일 완료율을 높이면 전반적인 생산성이 향상될 수 있습니다.';
-    } else if (nutritionAverage < 50) {
-      return '영양제 섭취율을 높이면 건강 관리에 도움이 될 수 있습니다.';
-    } else {
-      return '현재 할 일 관리와 영양제 섭취가 잘 되고 있습니다. 계속 유지하세요!';
-    }
+  double _calculatePercentage(List<Nutrition> nutritions) {
+    if (nutritions.isEmpty) return 0.0;
+    int takenCount = nutritions.where((n) => n.taken).length;
+    return takenCount / nutritions.length * 100;
   }
 }
 
