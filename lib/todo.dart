@@ -29,13 +29,14 @@ class TodoPage extends StatefulWidget {
   final DateTime selectedDate;
   final Function(Todo) onTodoAdded;
   final Function(Todo) onTodoRemoved;
+  final Function(List<Todo>) onTodoListChanged; // 추가
 
   TodoPage({
     required this.selectedDate,
     required this.onTodoAdded,
     required this.onTodoRemoved,
+    required this.onTodoListChanged, // 추가
   });
-
 
   @override
   _TodoPageState createState() => _TodoPageState();
@@ -44,6 +45,10 @@ class TodoPage extends StatefulWidget {
 class _TodoPageState extends State<TodoPage> {
   // 초기 할 일 리스트
   final List<Todo> _todoList = [];
+
+  void _updateTodoList() {
+    widget.onTodoListChanged?.call(_todoList); // 수정된 부분: null 체크 후 호출
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +69,7 @@ class _TodoPageState extends State<TodoPage> {
               setState(() {
                 _todoList.remove(todo);
               });
+              _updateTodoList(); // 추가
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('${todo.title} 삭제됨')),
               );
@@ -97,7 +103,6 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-
   Widget _buildTrailingButtons(Todo todo) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -112,16 +117,15 @@ class _TodoPageState extends State<TodoPage> {
             setState(() {
               todo.isDone = value ?? false;
             });
+            _updateTodoList(); // 추가
           },
         ),
       ],
     );
   }
 
-  // 할 일 수정
   void _showEditTitleDialog(BuildContext context, Todo todo) {
     TextEditingController _controller = TextEditingController(text: todo.title);
-
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -142,6 +146,7 @@ class _TodoPageState extends State<TodoPage> {
                 setState(() {
                   todo.title = _controller.text;
                 });
+                _updateTodoList(); // 추가
                 Navigator.of(context).pop();
               },
             ),
@@ -151,7 +156,6 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  // 할 일 상세보기
   void _showTodoDetails(BuildContext context, Todo todo) {
     showModalBottomSheet(
       context: context,
@@ -180,12 +184,12 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  // 메모 입력 필드
   Widget _buildMemoField(Todo todo) {
     return TextFormField(
       initialValue: todo.memo,
       onChanged: (value) => setState(() {
         todo.memo = value.trim().isEmpty ? null : value;
+        _updateTodoList(); // 추가
       }),
       decoration: InputDecoration(
         hintText: todo.memo?.isEmpty ?? true ? '메모' : '',
@@ -197,7 +201,6 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  // 알람 시간 및 반복 설정 옵션
   Widget _buildAlarmAndRepeatRow(Todo todo) {
     return Row(
       children: [
@@ -208,22 +211,18 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  // 알람 시간 선택
   Widget _buildAlarmOption(Todo todo) {
     return Expanded(
       child: GestureDetector(
         onTap: () => _selectAlarmTime(context, todo),
         child: _buildOptionBox(
           icon: Icons.alarm,
-          text: todo.alarmTime != null
-              ? '${todo.alarmTime!.hour}:${todo.alarmTime!.minute}'
-              : '알림 없음',
+          text: todo.alarmTime != null ? '${todo.alarmTime!.hour}:${todo.alarmTime!.minute}' : '알림 없음',
         ),
       ),
     );
   }
 
-  // 반복 설정 선택
   Widget _buildRepeatOption(Todo todo) {
     return Expanded(
       child: GestureDetector(
@@ -236,7 +235,6 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  // 공통 옵션 박스 위젯
   Widget _buildOptionBox({required IconData icon, required String text}) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -255,13 +253,13 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  // 할 일 완료/취소 버튼
   Widget _buildCompletionButton(Todo todo) {
     return ElevatedButton.icon(
       onPressed: () {
         setState(() {
           todo.isDone = !todo.isDone;
         });
+        _updateTodoList(); // 추가
         Navigator.pop(context);
       },
       icon: Icon(todo.isDone ? Icons.check_circle : Icons.circle_outlined),
@@ -269,13 +267,13 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  // 삭제 버튼
   Widget _buildDeleteButton(Todo todo) {
     return ElevatedButton.icon(
       onPressed: () {
         setState(() {
           _todoList.remove(todo);
         });
+        _updateTodoList(); // 추가
         Navigator.pop(context);
       },
       icon: Icon(Icons.delete, color: Colors.red),
@@ -286,21 +284,19 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  // 알람 시간 선택
   void _selectAlarmTime(BuildContext context, Todo todo) async {
     TimeOfDay? selectedTime = await showTimePicker(
       context: context,
       initialTime: todo.alarmTime ?? TimeOfDay.now(),
     );
-
     if (selectedTime != null) {
       setState(() {
         todo.alarmTime = selectedTime;
       });
+      _updateTodoList(); // 추가
     }
   }
 
-  // 반복 설정 선택
   void _selectRepeatOption(BuildContext context, Todo todo) async {
     String? selectedRepeat = await showDialog<String>(
       context: context,
@@ -317,15 +313,14 @@ class _TodoPageState extends State<TodoPage> {
         );
       },
     );
-
     if (selectedRepeat != null) {
       setState(() {
         todo.repeat = selectedRepeat;
       });
+      _updateTodoList(); // 추가
     }
   }
 
-  // 반복 설정 옵션 다이얼로그 항목
   SimpleDialogOption _buildRepeatOptionDialog(String option) {
     return SimpleDialogOption(
       onPressed: () {
@@ -335,7 +330,6 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  // 새 할 일 추가 다이얼로그
   void _addNewTodoDialog() {
     TextEditingController _controller = TextEditingController();
     showDialog(
@@ -361,6 +355,7 @@ class _TodoPageState extends State<TodoPage> {
                     date: widget.selectedDate,
                   ));
                 });
+                _updateTodoList(); // 추가
                 Navigator.of(context).pop();
               },
             ),
@@ -371,7 +366,6 @@ class _TodoPageState extends State<TodoPage> {
   }
 }
 
-// 두 날짜가 동일한 날짜인지 확인하는 함수
 bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
 }
