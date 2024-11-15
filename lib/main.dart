@@ -6,13 +6,14 @@ import 'nut.dart';
 import 'my.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'package:flutter/material.dart';
+import 'login.dart';
 
-void main() async{
-  WidgetsFlutterBinding.ensureInitialized(); // Firebase 초기화 전에 위젯 바인딩 준비
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
-  options: DefaultFirebaseOptions.currentPlatform,
+    options: DefaultFirebaseOptions.currentPlatform,
   );
+
   runApp(const MyApp());
 }
 
@@ -24,10 +25,19 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'All Care',
       theme: ThemeData(
+        brightness: Brightness.light,
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+        // 다크 모드의 다른 테마 설정
+      ),
+      themeMode: ThemeMode.system, // 시스템 설정에 따라 테마 변경
       home: const MyHomePage(),
+      // home: const LoginScreen(),
     );
   }
 }
@@ -39,15 +49,15 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-
 class _MyHomePageState extends State<MyHomePage> {
   int _selectedIndex = 0;
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
+  List<Todo> _todoList = [];
 
   // 추가: Todo와 Nutrition 리스트를 저장할 변수
-  final List<Todo> _todoList = [];
+  final List<Todo> _ontodoList = [];
   final List<Nutrition> _nutritionList = [];
 
   late List<Widget> _widgetOptions;
@@ -61,6 +71,11 @@ class _MyHomePageState extends State<MyHomePage> {
         selectedDate: _selectedDay!,
         onTodoAdded: _onTodoAdded,
         onTodoRemoved: _onTodoRemoved,
+        onTodoListChanged: (List<Todo> updatedList) {
+          setState(() {
+            _todoList = updatedList;
+          });
+        },
       ),
       NutPage(
         selectedDate: _selectedDay!,
@@ -70,43 +85,6 @@ class _MyHomePageState extends State<MyHomePage> {
       MyPage(todos: _todoList, nutritions: _nutritionList),
     ];
   }
-// Todo 추가 콜백
-  void _onTodoAdded(Todo todo) {
-    setState(() {
-      _todoList.add(todo);
-      _updateMyPage();
-    });
-  }
-
-  // Todo 제거 콜백
-  void _onTodoRemoved(Todo todo) {
-    setState(() {
-      _todoList.remove(todo);
-      _updateMyPage();
-    });
-  }
-
-  // Nutrition 추가 콜백
-  void _onNutritionAdded(Nutrition nutrition) {
-    setState(() {
-      _nutritionList.add(nutrition);
-      _updateMyPage();
-    });
-  }
-
-  // Nutrition 제거 콜백
-  void _onNutritionRemoved(Nutrition nutrition) {
-    setState(() {
-      _nutritionList.remove(nutrition);
-      _updateMyPage();
-    });
-  }
-
-  // MyPage 업데이트
-  void _updateMyPage() {
-    _widgetOptions[2] = MyPage(todos: _todoList, nutritions: _nutritionList);
-  }
-
 
   // Todo 추가 콜백
   void _onTodoAdded(Todo todo) {
@@ -145,11 +123,16 @@ class _MyHomePageState extends State<MyHomePage> {
     _widgetOptions[2] = MyPage(todos: _todoList, nutritions: _nutritionList);
   }
 
-
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
+  }
+
+  List<Todo> _getEventsForDay(DateTime day) {
+    return _todoList.where((todo) =>
+    isSameDay(todo.date, day) && !todo.isDone
+    ).toList();
   }
 
   Widget _buildCalendar() {
@@ -168,17 +151,31 @@ class _MyHomePageState extends State<MyHomePage> {
             selectedDate: selectedDay,
             onTodoAdded: _onTodoAdded,
             onTodoRemoved: _onTodoRemoved,
+            onTodoListChanged: (List<Todo> updatedList) {
+              setState(() {
+                _todoList = updatedList;
+              });
+            },
           );
           // Nut 페이지의 선택된 날짜 업데이트
           _widgetOptions[1] = NutPage(
             selectedDate: selectedDay,
             onNutritionAdded: _onNutritionAdded,
-            onNutritionRemoved: _onNutritionRemoved,
-          );
+            onNutritionRemoved: _onNutritionRemoved,);
         });
+      },
+      onFormatChanged: (format) {
+        if (_calendarFormat != format) {
+          setState(() {
+            _calendarFormat = format;
+          });
+        }
       },
       onPageChanged: (focusedDay) {
         _focusedDay = focusedDay;
+      },
+      eventLoader: (day) {
+        return _getEventsForDay(day);
       },
       calendarStyle: CalendarStyle(
         defaultTextStyle: const TextStyle(color: Colors.black),
@@ -200,7 +197,7 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
         outsideDecoration: const BoxDecoration(shape: BoxShape.circle),
         markerDecoration: const BoxDecoration(
-          color: Colors.blue,
+          color: Colors.red,
           shape: BoxShape.circle,
         ),
       ),
@@ -210,6 +207,31 @@ class _MyHomePageState extends State<MyHomePage> {
       headerStyle: const HeaderStyle(
         formatButtonVisible: false,
         titleCentered: true,
+      ),
+      calendarBuilders: CalendarBuilders(
+        markerBuilder: (context, date, events) {
+          if (events.isNotEmpty) {
+            return Positioned(
+              left: 160,
+              bottom: 1,
+              child: Container(
+                padding: EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.green,
+                ),
+                child: Text(
+                  '${events.length}',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            );
+          }
+          return null;
+        },
       ),
     );
   }
