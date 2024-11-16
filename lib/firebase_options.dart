@@ -85,4 +85,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'allcare-e00f7.firebasestorage.app',
     measurementId: 'G-9JRFXVETDR',
   );
+
 }

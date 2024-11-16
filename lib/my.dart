@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:collection/collection.dart';
@@ -176,3 +177,9 @@ class MyPage extends StatelessWidget {
 bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
 }
+=======
+// check.dart
+void myFunction() {
+  print('my function called');
+}
+>>>>>>> parent of d9a1c74 (Merge branch 'feature' into master)
