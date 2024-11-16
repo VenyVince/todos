@@ -25,7 +25,7 @@ class LoginScreen extends StatelessWidget {
             child: const Padding(
               padding: EdgeInsets.only(top: 60.0, left: 22),
               child: Text(
-                'Life Style',
+                'All care',
                 style: TextStyle(
                   fontSize: 30,
                   color: Colors.white,

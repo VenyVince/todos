@@ -18,15 +18,9 @@ class Todo {
   });
 }
 
-//원본
-//class TodoPage extends StatefulWidget {
-//final DateTime selectedDate;
-
-//TodoPage({required this.selectedDate});
-
-//콜백을 받아들이도록 수정
 class TodoPage extends StatefulWidget {
   final DateTime selectedDate;
+<<<<<<< HEAD
   final Function(Todo) onTodoAdded;
   final Function(Todo) onTodoRemoved;
   final Function(List<Todo>) onTodoListChanged; // 추가
@@ -38,6 +32,14 @@ class TodoPage extends StatefulWidget {
     required this.onTodoListChanged, // 추가
   });
 
+<<<<<<< HEAD
+=======
+=======
+
+  TodoPage({required this.selectedDate});
+
+>>>>>>> parent of d9a1c74 (Merge branch 'feature' into master)
+>>>>>>> c7cff78f5bab5f82f9b841ef20d0ae9fce3e0345
   @override
   _TodoPageState createState() => _TodoPageState();
 }

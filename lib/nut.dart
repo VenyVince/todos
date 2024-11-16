@@ -16,23 +16,10 @@ class Nutrition {
   });
 }
 
-//원본
-//class NutPage extends StatefulWidget {
-//final DateTime selectedDate;
-
-//NutPage({required this.selectedDate});
-
-//콜백을 받아드리도록 수정
 class NutPage extends StatefulWidget {
   final DateTime selectedDate;
-  final Function(Nutrition) onNutritionAdded;
-  final Function(Nutrition) onNutritionRemoved;
 
-  NutPage({
-    required this.selectedDate,
-    required this.onNutritionAdded,
-    required this.onNutritionRemoved,
-  });
+  NutPage({required this.selectedDate});
 
   @override
   _NutPageState createState() => _NutPageState();

@@ -56,10 +56,13 @@ class _MyHomePageState extends State<MyHomePage> {
   DateTime? _selectedDay;
   List<Todo> _todoList = [];
 
+<<<<<<< HEAD
   // 추가: Todo와 Nutrition 리스트를 저장할 변수
   final List<Todo> _ontodoList = [];
   final List<Nutrition> _nutritionList = [];
 
+=======
+>>>>>>> parent of d9a1c74 (Merge branch 'feature' into master)
   late List<Widget> _widgetOptions;
 
   @override
@@ -67,6 +70,7 @@ class _MyHomePageState extends State<MyHomePage> {
     super.initState();
     _selectedDay = _focusedDay;
     _widgetOptions = [
+<<<<<<< HEAD
       TodoPage(
         selectedDate: _selectedDay!,
         onTodoAdded: _onTodoAdded,
@@ -123,6 +127,17 @@ class _MyHomePageState extends State<MyHomePage> {
     _widgetOptions[2] = MyPage(todos: _todoList, nutritions: _nutritionList);
   }
 
+<<<<<<< HEAD
+=======
+=======
+      TodoPage(selectedDate: _selectedDay!),
+      NutPage(selectedDate: _selectedDay!), // Nut 페이지 추가
+      const Text('My Page'),
+    ];
+  }
+
+>>>>>>> parent of d9a1c74 (Merge branch 'feature' into master)
+>>>>>>> c7cff78f5bab5f82f9b841ef20d0ae9fce3e0345
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -147,6 +162,7 @@ class _MyHomePageState extends State<MyHomePage> {
           _selectedDay = selectedDay;
           _focusedDay = focusedDay;
           // Todo 페이지의 선택된 날짜 업데이트
+<<<<<<< HEAD
           _widgetOptions[0] = TodoPage(
             selectedDate: selectedDay,
             onTodoAdded: _onTodoAdded,
@@ -162,6 +178,14 @@ class _MyHomePageState extends State<MyHomePage> {
             selectedDate: selectedDay,
             onNutritionAdded: _onNutritionAdded,
             onNutritionRemoved: _onNutritionRemoved,);
+<<<<<<< HEAD
+=======
+=======
+          _widgetOptions[0] = TodoPage(selectedDate: selectedDay);
+          // Nut 페이지의 선택된 날짜 업데이트
+          _widgetOptions[1] = NutPage(selectedDate: selectedDay);
+>>>>>>> parent of d9a1c74 (Merge branch 'feature' into master)
+>>>>>>> c7cff78f5bab5f82f9b841ef20d0ae9fce3e0345
         });
       },
       onFormatChanged: (format) {
@@ -177,6 +201,7 @@ class _MyHomePageState extends State<MyHomePage> {
       eventLoader: (day) {
         return _getEventsForDay(day);
       },
+<<<<<<< HEAD
       calendarStyle: CalendarStyle(
         defaultTextStyle: const TextStyle(color: Colors.black),
         todayDecoration: BoxDecoration(
@@ -207,6 +232,43 @@ class _MyHomePageState extends State<MyHomePage> {
       headerStyle: const HeaderStyle(
         formatButtonVisible: false,
         titleCentered: true,
+=======
+      calendarBuilders: CalendarBuilders(
+        markerBuilder: (context, date, events) {
+          if (events.isNotEmpty) {
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                return Positioned(
+                  right: constraints.maxWidth * 0.1, // 날짜 셀 너비의 10% 지점에 위치
+                  top: constraints.maxHeight * 0.1,  // 날짜 셀 높이의 10% 지점에 위치
+                  child: Container(
+                    width: constraints.maxWidth * 0.05,  // 날짜 셀 너비의 10%로 축소
+                    height: constraints.maxWidth * 0.1,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFFFFA500), // 주황색
+                    ),
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          '${events.length}',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: constraints.maxWidth * 0.06, // 날짜 셀 너비의 6%로 축소
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          }
+          return null;
+        },
+>>>>>>> c7cff78f5bab5f82f9b841ef20d0ae9fce3e0345
       ),
       calendarBuilders: CalendarBuilders(
         markerBuilder: (context, date, events) {
