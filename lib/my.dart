@@ -2,19 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'todo.dart'; // Todo 클래스를 가져옵니다.
 import 'nut.dart';  // Nutrition 클래스를 가져옵니다.
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 class MyPage extends StatelessWidget {
   final List<Todo> todos; // Todo 리스트
   final List<Nutrition> nutritions; // Nutrition 리스트
+  final String userEmail;
 
-  MyPage({required this.todos, required this.nutritions}); // 생성자
+  MyPage({required this.todos, required this.nutritions, required this.userEmail});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '나의 기록',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: HomeScreen(todos: todos, nutritions: nutritions), // HomeScreen에 todos와 nutritions 전달
+      home: HomeScreen(todos: todos, nutritions: nutritions, userEmail: userEmail,), // HomeScreen에 todos와 nutritions 전달
     );
   }
 }
@@ -22,8 +25,9 @@ class MyPage extends StatelessWidget {
 class SearchPage extends StatefulWidget {
   final List<Todo> todos;
   final List<Nutrition> nutritions;
+  final String userEmail;
 
-  SearchPage({required this.todos, required this.nutritions});
+  SearchPage({required this.todos, required this.nutritions, required this.userEmail});
 
   @override
   _SearchPageState createState() => _SearchPageState();
@@ -32,6 +36,7 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   late List<Todo> filteredTodos;
   late List<Nutrition> filteredNutritions;
+  late String userEmail;
   String searchQuery = '';
   DateTime? startDate;
   DateTime? endDate;
@@ -41,6 +46,7 @@ class _SearchPageState extends State<SearchPage> {
     super.initState();
     filteredTodos = widget.todos;
     filteredNutritions = widget.nutritions;
+    userEmail = widget.userEmail;
     sortData(); // 초기 데이터 정렬
   }
 
@@ -181,14 +187,15 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-
   void filterData() {
     setState(() {
       filteredTodos = widget.todos.where((todo) {
-        return todo.title.toLowerCase().contains(searchQuery.toLowerCase());
+        return todo.title.toLowerCase().contains(searchQuery.toLowerCase()) &&
+            todo.userEmail == widget.userEmail; // 유저 이메일 필터링 추가
       }).toList();
       filteredNutritions = widget.nutritions.where((nutrition) {
-        return nutrition.name.toLowerCase().contains(searchQuery.toLowerCase());
+        return nutrition.name.toLowerCase().contains(searchQuery.toLowerCase()) &&
+            nutrition.userEmail == widget.userEmail; // 유저 이메일 필터링
       }).toList();
       if (startDate != null && endDate != null) {
         filteredTodos = filteredTodos.where((todo) => todo.date.isAfter(startDate!) && todo.date.isBefore(endDate!)).toList();
@@ -253,6 +260,7 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 }
+
 
 
 
@@ -430,8 +438,9 @@ class ReportPage extends StatelessWidget {
 class HomeScreen extends StatefulWidget {
   final List<Todo> todos; // Todo 리스트
   final List<Nutrition> nutritions; // Nutrition 리스트
+  final String userEmail; // 생성자에서 userEmail을 받도록 수정
 
-  HomeScreen({required this.todos, required this.nutritions}); // 생성자
+  HomeScreen({required this.todos, required this.nutritions, required this.userEmail});
 
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -440,7 +449,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late List<Todo> todos;
   late List<Nutrition> nutriList;
-
   int _selectedPageIndex = 0; // 현재 선택된 페이지 인덱스
 
   @override
@@ -448,20 +456,30 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     todos = widget.todos; // 전달받은 todos 사용
     nutriList = widget.nutritions; // 전달받은 nutritions 사용
-    loadInitialData(); // 필요에 따라 초기 데이터 로드 메서드 호출 가능
+    String userEmail = FirebaseAuth.instance.currentUser!.email!; // 현재 로그인한 사용자의 이메일
+    loadInitialData(userEmail); // 필요에 따라 초기 데이터 로드 메서드 호출 가능
   }
 
-  Future<void> loadInitialData() async {
-    // Firestore에서 Todo 데이터 로드 (필요 시)
-    QuerySnapshot todoSnapshot = await FirebaseFirestore.instance.collection('todos').get();
+  Future<void> loadInitialData(String userEmail) async {
+    // Firestore에서 Todo 데이터 로드 (사용자 이메일로 필터링)
+    QuerySnapshot todoSnapshot = await FirebaseFirestore.instance
+        .collection('todos')
+        .where('userEmail', isEqualTo: userEmail) // 이메일로 필터링
+        .get();
+
     todos = todoSnapshot.docs.map((doc) => Todo.fromMap(doc.data() as Map<String, dynamic>)).toList();
 
-    // Firestore에서 Nutrition 데이터 로드 (필요 시)
-    QuerySnapshot nutritionSnapshot = await FirebaseFirestore.instance.collection('nutrition').get();
+    // Firestore에서 Nutrition 데이터 로드 (사용자 이메일로 필터링)
+    QuerySnapshot nutritionSnapshot = await FirebaseFirestore.instance
+        .collection('nutrition')
+        .where('userEmail', isEqualTo: userEmail) // 이메일로 필터링
+        .get();
+
     nutriList = nutritionSnapshot.docs.map((doc) => Nutrition.fromMap(doc.data() as Map<String, dynamic>)).toList();
 
     setState(() {});
   }
+
 
   void showDownloadMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -496,7 +514,7 @@ class _HomeScreenState extends State<HomeScreen> {
         currentPage = Container(); // 기본값으로 빈 화면 표시
         break;
       case 1:
-        currentPage = SearchPage(todos: todos, nutritions: nutriList); // 검색 페이지 표시
+        currentPage = SearchPage(todos: todos, nutritions: nutriList, userEmail: widget.userEmail); // 검색 페이지 표시
         break;
       case 2:
         currentPage = StatisticsPage(todos: todos); // 통계 페이지 표시
