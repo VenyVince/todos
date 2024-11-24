@@ -33,7 +33,6 @@ class _SearchPageState extends State<SearchPage> {
   late List<Todo> filteredTodos;
   late List<Nutrition> filteredNutritions;
   String searchQuery = '';
-
   DateTime? startDate;
   DateTime? endDate;
 
@@ -50,42 +49,151 @@ class _SearchPageState extends State<SearchPage> {
     filteredNutritions.sort((a, b) => a.name.compareTo(b.name)); // 이름 오름차순 정렬
   }
 
+  Future<void> _enterDateRange(BuildContext context) async {
+    int? startYear;
+    int? startMonth;
+    int? endYear;
+    int? endMonth;
+
+    List<int> years = [for (int i = 2000; i <= DateTime.now().year; i++) i];
+    List<int> months = [for (int i = 1; i <= 12; i++) i];
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder( // StatefulBuilder 추가
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('날짜 범위 입력'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: DropdownButton<int>(
+                          hint: Text('시작 연도'),
+                          value: startYear,
+                          onChanged: (int? newValue) {
+                            setState(() {
+                              startYear = newValue;
+                            });
+                          },
+                          items: years.map<DropdownMenuItem<int>>((int value) {
+                            return DropdownMenuItem<int>(
+                              value: value,
+                              child: Text('$value'),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Flexible(
+                        child: DropdownButton<int>(
+                          hint: Text('시작 월'),
+                          value: startMonth,
+                          onChanged: (int? newValue) {
+                            setState(() {
+                              startMonth = newValue;
+                            });
+                          },
+                          items: months.map<DropdownMenuItem<int>>((int value) {
+                            return DropdownMenuItem<int>(
+                              value: value,
+                              child: Text('$value'),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: DropdownButton<int>(
+                          hint: Text('종료 연도'),
+                          value: endYear,
+                          onChanged: (int? newValue) {
+                            setState(() {
+                              endYear = newValue;
+                            });
+                          },
+                          items: years.map<DropdownMenuItem<int>>((int value) {
+                            return DropdownMenuItem<int>(
+                              value: value,
+                              child: Text('$value'),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Flexible(
+                        child: DropdownButton<int>(
+                          hint: Text('종료 월'),
+                          value: endMonth,
+                          onChanged: (int? newValue) {
+                            setState(() {
+                              endMonth = newValue;
+                            });
+                          },
+                          items: months.map<DropdownMenuItem<int>>((int value) {
+                            return DropdownMenuItem<int>(
+                              value: value,
+                              child: Text('$value'),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // 취소 시 닫기
+                  },
+                  child: Text('취소'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    if (startYear != null && startMonth != null && endYear != null && endMonth != null) {
+                      setState(() {
+                        startDate = DateTime(startYear!, startMonth!, 1);
+                        endDate = DateTime(endYear!, endMonth!, 1);
+                        filterData(); // 날짜 선택 후 필터링
+                      });
+                      Navigator.of(context).pop();
+                    } else {
+                      // 입력값이 유효하지 않으면 에러 처리
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('시작 날짜나 종료 날짜가 제대로 선택되지 않았습니다.')),
+                      );
+                    }
+                  },
+                  child: Text('확인'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+
   void filterData() {
     setState(() {
       filteredTodos = widget.todos.where((todo) {
         return todo.title.toLowerCase().contains(searchQuery.toLowerCase());
       }).toList();
-
       filteredNutritions = widget.nutritions.where((nutrition) {
         return nutrition.name.toLowerCase().contains(searchQuery.toLowerCase());
       }).toList();
-
       if (startDate != null && endDate != null) {
-        filteredTodos = filteredTodos.where((todo) =>
-        todo.date.isAfter(startDate!) && todo.date.isBefore(endDate!)).toList();
+        filteredTodos = filteredTodos.where((todo) => todo.date.isAfter(startDate!) && todo.date.isBefore(endDate!)).toList();
       }
     });
-  }
-
-  Future<void> _selectDate(BuildContext context) async {
-    // 시작 날짜와 종료 날짜를 선택할 수 있는 다이얼로그 표시
-    DateTimeRange? picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-      initialDateRange: DateTimeRange(
-        start: startDate ?? DateTime.now(),
-        end: endDate ?? DateTime.now(),
-      ),
-    );
-
-    if (picked != null) {
-      setState(() {
-        startDate = picked.start; // 시작 날짜 업데이트
-        endDate = picked.end;     // 종료 날짜 업데이트
-        filterData();             // 날짜 선택 후 데이터 필터링
-      });
-    }
   }
 
   @override
@@ -113,7 +221,7 @@ class _SearchPageState extends State<SearchPage> {
                 ),
                 IconButton(
                   icon: Icon(Icons.calendar_today),
-                  onPressed: () => _selectDate(context), // 캘린더 아이콘 클릭 시 날짜 선택
+                  onPressed: () => _enterDateRange(context), // 캘린더 아이콘 클릭 시 날짜 선택
                 ),
               ],
             ),
@@ -147,14 +255,43 @@ class _SearchPageState extends State<SearchPage> {
 }
 
 class StatisticsPage extends StatelessWidget {
+  final List<Todo> todos; // Todo 리스트
+  late List<Nutrition> nutriList;
+
+  StatisticsPage({required this.todos}); // 생성자
+
   @override
   Widget build(BuildContext context) {
+    // 통계 계산
+    int totalCount = todos.length;
+    int completedCount = todos.where((todo) => todo.isDone).length;
+    int incompleteCount = totalCount - completedCount;
+
     return Scaffold(
       appBar: AppBar(
         title: Text('통계'),
       ),
-      body: Center(
-        child: Text('통계 기능이 여기에 구현됩니다.'),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '총 할 일 수: $totalCount',
+              style: TextStyle(fontSize: 24),
+            ),
+            SizedBox(height: 10),
+            Text(
+              '완료된 할 일 수: $completedCount',
+              style: TextStyle(fontSize: 24),
+            ),
+            SizedBox(height: 10),
+            Text(
+              '미완료된 할 일 수: $incompleteCount',
+              style: TextStyle(fontSize: 24),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -168,7 +305,14 @@ class ReportPage extends StatelessWidget {
         title: Text('신고'),
       ),
       body: Center(
-        child: Text('신고 기능이 여기에 구현됩니다.'),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            '오류 사항을 redguy0814@gmail.com으로 신고해 주세요.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 18),
+          ),
+        ),
       ),
     );
   }
@@ -246,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
         currentPage = SearchPage(todos: todos, nutritions: nutriList); // 검색 페이지 표시
         break;
       case 2:
-        currentPage = StatisticsPage(); // 통계 페이지 표시
+        currentPage = StatisticsPage(todos: todos); // 통계 페이지 표시
         break;
       case 3:
         currentPage = ReportPage(); // 신고 페이지 표시
@@ -257,20 +401,20 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('나의 기록'),
-        actions: [
+      appBar :AppBar(
+        title :Text ('나의 기록'),
+        actions :[
           IconButton(
-            icon: Icon(Icons.download),
-            onPressed: showDownloadMessage,
+            icon :Icon(Icons.download),
+            onPressed :showDownloadMessage,
           ),
         ],
       ),
-      body: Column(
-        children: [
+      body :Column(
+        children :[
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
+            mainAxisAlignment :MainAxisAlignment.spaceAround,
+            children :[
               ElevatedButton(
                 onPressed:_navigateToSearch,
                 child :Text ('검색'),
@@ -285,7 +429,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          Expanded(child : currentPage), // 현재 선택된 페이지 표시
+          Expanded(child :currentPage), // 현재 선택된 페이지 표시
         ],
       ),
     );
