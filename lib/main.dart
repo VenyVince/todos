@@ -70,7 +70,6 @@ class _MyHomePageState extends State<MyHomePage> {
   DateTime? _selectedDay;
   List<Todo> _todoList = [];
 
-  // 추가: Todo와 Nutrition 리스트를 저장할 변수
   final List<Todo> _ontodoList = [];
   final List<Nutrition> _nutritionList = [];
 
@@ -99,11 +98,12 @@ class _MyHomePageState extends State<MyHomePage> {
       MyPage(todos: _todoList, nutritions: _nutritionList),
     ];
   }
+
   bool _isAllTodosCompletedForDay(DateTime day) {
     var todosForDay = _todoList.where((todo) => isSameDay(todo.date, day)).toList();
     return todosForDay.isNotEmpty && todosForDay.every((todo) => todo.isDone);
   }
-  // Todo 추가 콜백
+
   void _onTodoAdded(Todo todo) {
     setState(() {
       _todoList.add(todo);
@@ -111,7 +111,6 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  // Todo 제거 콜백
   void _onTodoRemoved(Todo todo) {
     setState(() {
       _todoList.remove(todo);
@@ -119,7 +118,6 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  // Nutrition 추가 콜백
   void _onNutritionAdded(Nutrition nutrition) {
     setState(() {
       _nutritionList.add(nutrition);
@@ -127,7 +125,6 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  // Nutrition 제거 콜백
   void _onNutritionRemoved(Nutrition nutrition) {
     setState(() {
       _nutritionList.removeWhere((n) => n.id == nutrition.id);
@@ -135,7 +132,6 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  // MyPage 업데이트
   void _updateMyPage() {
     setState(() {
       _widgetOptions[2] = MyPage(todos: _todoList, nutritions: _nutritionList);
@@ -165,7 +161,6 @@ class _MyHomePageState extends State<MyHomePage> {
         setState(() {
           _selectedDay = selectedDay;
           _focusedDay = focusedDay;
-          // Todo 페이지의 선택된 날짜 업데이트
           _widgetOptions[0] = TodoPage(
             selectedDate: selectedDay,
             onTodoAdded: _onTodoAdded,
@@ -177,15 +172,11 @@ class _MyHomePageState extends State<MyHomePage> {
             },
             userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
           );
-          // Nut 페이지의 선택된 날짜 업데이트
           _widgetOptions[1] = NutPage(
             selectedDate: selectedDay,
             userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
           );
-
-
         });
-
       },
       onFormatChanged: (format) {
         if (_calendarFormat != format) {
@@ -253,24 +244,52 @@ class _MyHomePageState extends State<MyHomePage> {
           if (events.isNotEmpty) {
             return LayoutBuilder(
               builder: (context, constraints) {
+                final cellSize = constraints.maxWidth;
+                final screenWidth = MediaQuery.of(context).size.width;
+
+                // 화면 크기에 따라 마커 크기 비율 조정
+                double markerSizeRatio;
+                if (screenWidth < 360) {
+                  markerSizeRatio = 0.22; // 매우 작은 화면
+                } else if (screenWidth < 480) {
+                  markerSizeRatio = 0.20; // 작은 화면
+                } else if (screenWidth < 600) {
+                  markerSizeRatio = 0.18; // 중소형 화면
+                } else if (screenWidth < 720) {
+                  markerSizeRatio = 0.16; // 중형 화면
+                } else if (screenWidth < 1024) {
+                  markerSizeRatio = 0.13; // 대형 화면
+                } else if (screenWidth < 1200) {
+                  markerSizeRatio = 0.10; // 매우 큰 화면
+                } else {
+                  markerSizeRatio = 0.07; // 초대형 화면
+                }
+
+                final markerSize = cellSize * markerSizeRatio;
+                final fontSize = markerSize * 0.7; // 마커 크기의 50%로 폰트 크기 설정
+
+                // 마커 크기의 최대값 설정 (픽셀 단위)
+                final maxMarkerSize = 24.0;
+                final finalMarkerSize = markerSize > maxMarkerSize ? maxMarkerSize : markerSize;
+
                 return Positioned(
-                  right: constraints.maxWidth * 0.1,
-                  top: constraints.maxHeight * 0.1,
+                  right: cellSize * 0.05,
+                  top: cellSize * 0.05,
                   child: Container(
-                    width: constraints.maxWidth * 0.05,
-                    height: constraints.maxWidth * 0.1,
+                    width: finalMarkerSize,
+                    height: finalMarkerSize,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Color(0xFFFFA500),
                     ),
                     child: Center(
                       child: FittedBox(
-                        fit: BoxFit.scaleDown,
+                        fit: BoxFit.contain,
                         child: Text(
                           '${events.length}',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: constraints.maxWidth * 0.1,
+                            fontSize: fontSize,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
