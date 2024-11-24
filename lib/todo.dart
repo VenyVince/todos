@@ -29,7 +29,23 @@ class Todo {
     this.repeatDays = const [],
     required this.userEmail,
   });
+  // Firestore DocumentSnapshot을 기반으로 Todo 객체 생성
+  factory Todo.fromDocument(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
+    return Todo(
+      id: doc.id, // Firestore 문서 ID
+      title: data['title'] ?? '',
+      date: (data['date'] as Timestamp).toDate(),
+      memo: data['memo'],
+      alarmTime: data['alarmTime'] != null ? TimeOfDay.fromDateTime((data['alarmTime'] as Timestamp).toDate()) : null,
+      repeat: data['repeat'],
+      isDone: data['isDone'] ?? false,
+      futureDates: (data['futureDates'] as List<dynamic>?)?.map((e) => (e as Timestamp).toDate()).toList(),
+      repeatDays: List<String>.from(data['repeatDays'] ?? []),
+      userEmail: data['userEmail'] ?? '',
+    );
+  }
   // Firestore에서 가져온 데이터를 Map으로 변환
   Map<String, dynamic> toMap() {
     return {
@@ -114,17 +130,21 @@ class _TodoPageState extends State<TodoPage> {
       priority: Priority.high,
       showWhen: true,
     );
+
     var platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
     );
 
-    await flutterLocalNotificationsPlugin.schedule(
-      todo.hashCode,
-      'Todo Reminder',
-      todo.title,
-      scheduledNotificationDateTime,
-      platformChannelSpecifics,
-    );
+    // 아래 schedule 메소드 호출을 주석 처리합니다.
+    /*
+  await flutterLocalNotificationsPlugin.schedule(
+    todo.hashCode,
+    'Todo Reminder',
+    todo.title,
+    scheduledNotificationDateTime,
+    platformChannelSpecifics,
+  );
+  */
   }
 
   Future<void> _initializeNotifications() async {
