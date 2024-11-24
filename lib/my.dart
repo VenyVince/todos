@@ -9,6 +9,7 @@ import 'package:excel/excel.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:typed_data';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 
 class MyPage extends StatefulWidget {
@@ -80,21 +81,6 @@ class _MyPageState extends State<MyPage> {
   }
 
   Widget _buildMyRecordsView() {
-    List<Todo> displayTodos;
-
-    if (_searchQuery.isEmpty) {
-      // 검색어가 없을 때 모든 할 일을 오름차순 정렬
-      displayTodos = widget.todos.toList(); // todos는 Firestore에서 로드된 할 일 목록
-    } else {
-      // 검색어가 있을 때 필터링 후 오름차순 정렬
-      displayTodos = widget.todos
-          .where((todo) => todo.title.toLowerCase().contains(_searchQuery.toLowerCase()))
-          .toList();
-    }
-
-// 정렬
-    displayTodos.sort((a, b) => a.title.compareTo(b.title));
-
     return Column(
       children: [
         Padding(
@@ -112,26 +98,55 @@ class _MyPageState extends State<MyPage> {
           ),
         ),
         Expanded(
-          child: ListView.builder(
-            itemCount: displayTodos.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                title: Text(displayTodos[index].title),
-                subtitle: Text(displayTodos[index].date.toString()),
-                trailing: Icon(
-                  displayTodos[index].isDone ? Icons.check_box : Icons.check_box_outline_blank,
-                ),
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('todos')
+                .where('userEmail', isEqualTo: 'your_user_email') // 현재 사용자의 이메일로 필터링
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Center(child: CircularProgressIndicator());
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return Center(child: Text('할 일이 없습니다.'));
+              }
+
+              // Firestore 데이터를 Todo 객체로 변환
+              List<Todo> todos = snapshot.data!.docs
+                  .map((doc) => Todo.fromDocument(doc))
+                  .toList();
+
+              // 검색어에 따라 필터링
+              List<Todo> displayTodos = todos
+                  .where((todo) =>
+                  todo.title.toLowerCase().contains(_searchQuery.toLowerCase()))
+                  .toList();
+
+              // 오름차순 정렬
+              displayTodos.sort((a, b) => a.title.compareTo(b.title));
+
+              return ListView.builder(
+                itemCount: displayTodos.length,
+                itemBuilder: (context, index) {
+                  final todo = displayTodos[index];
+                  return ListTile(
+                    title: Text(todo.title),
+                    subtitle: Text(todo.date.toString()),
+                    trailing: Icon(
+                      todo.isDone
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
+                    ),
+                  );
+                },
               );
             },
           ),
         ),
-        ElevatedButton(
-          child: Text('엑셀로 다운로드'),
-          onPressed: _exportToExcel,
-        ),
       ],
     );
   }
+
   void _exportToExcelMobile() async {
     var excel = Excel.createExcel();
     Sheet sheetObject = excel['Sheet1'];
