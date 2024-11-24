@@ -254,19 +254,106 @@ class _SearchPageState extends State<SearchPage> {
   }
 }
 
-class StatisticsPage extends StatelessWidget {
+
+
+class StatisticsPage extends StatefulWidget {
   final List<Todo> todos; // Todo 리스트
-  late List<Nutrition> nutriList;
 
   StatisticsPage({required this.todos}); // 생성자
 
   @override
-  Widget build(BuildContext context) {
-    // 통계 계산
-    int totalCount = todos.length;
-    int completedCount = todos.where((todo) => todo.isDone).length;
-    int incompleteCount = totalCount - completedCount;
+  _StatisticsPageState createState() => _StatisticsPageState();
+}
 
+class _StatisticsPageState extends State<StatisticsPage> {
+  DateTime? startDate;
+  DateTime? endDate;
+  double takenDosage = 0.0;
+  double totalDosage = 0.0;
+  double completionRate = 0.0;
+  double intakePercentage = 0.0;
+  List<Nutrition> nutriList = [];
+
+  @override
+  void initState() {
+    super.initState();
+    fetchNutritions().then((data) {
+      setState(() {
+        nutriList = data;
+      });
+    });
+  }
+
+  Future<List<Nutrition>> fetchNutritions() async {
+    List<Nutrition> nutritions = [];
+
+    QuerySnapshot querySnapshot = await FirebaseFirestore.instance.collection('nutritions').get();
+    for (var doc in querySnapshot.docs) {
+      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+      Nutrition nutrition = Nutrition(
+        id: doc.id,
+        name: data['name'],
+        totalDosage: data['totalDosage'],
+        count: data['count'],
+        userEmail: data['userEmail'],
+        takenDosageByDate: Map<String, double>.from(data['takenDosageByDate']),
+      );
+      nutritions.add(nutrition);
+    }
+    return nutritions;
+  }
+
+  void _selectDateRange(BuildContext context) async {
+    DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+      initialDateRange: DateTimeRange(
+        start: startDate ?? DateTime.now(),
+        end: endDate ?? DateTime.now(),
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        startDate = picked.start;
+        endDate = picked.end;
+        _calculateStatistics();
+      });
+    }
+  }
+
+  void _calculateStatistics() {
+    if (startDate == null || endDate == null) return;
+
+    // 할 일 완료율 계산
+    int totalTasks = 0;
+    int completedTasks = 0;
+    for (var todo in widget.todos) {
+      if (todo.date.isAfter(startDate!) && todo.date.isBefore(endDate!)) {
+        totalTasks++;
+        if (todo.isDone) completedTasks++;
+      }
+    }
+    completionRate = (totalTasks > 0) ? (completedTasks / totalTasks) * 100 : 0;
+
+    // 영양제 섭취량 계산
+    takenDosage = 0.0;
+    totalDosage = 0.0;
+    for (var nutrition in nutriList) {
+      nutrition.takenDosageByDate.forEach((date, dosage) {
+        DateTime parsedDate = DateTime.parse(date);
+        if (parsedDate.isAfter(startDate!) && parsedDate.isBefore(endDate!)) {
+          takenDosage += dosage;
+        }
+      });
+      totalDosage += nutrition.totalDosage;
+    }
+
+    intakePercentage = (totalDosage > 0) ? (takenDosage / totalDosage) * 100 : 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('통계'),
@@ -276,26 +363,48 @@ class StatisticsPage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              '총 할 일 수: $totalCount',
-              style: TextStyle(fontSize: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '기간 선택: ',
+                  style: TextStyle(fontSize: 18),
+                ),
+                IconButton(
+                  icon: Icon(Icons.calendar_today),
+                  onPressed: () => _selectDateRange(context),
+                ),
+              ],
             ),
-            SizedBox(height: 10),
-            Text(
-              '완료된 할 일 수: $completedCount',
-              style: TextStyle(fontSize: 24),
-            ),
-            SizedBox(height: 10),
-            Text(
-              '미완료된 할 일 수: $incompleteCount',
-              style: TextStyle(fontSize: 24),
-            ),
+            SizedBox(height: 20),
+            if (startDate != null && endDate != null) ...[
+              Text(
+                '선택한 기간: ${startDate!.toLocal().toIso8601String().substring(0, 10)} ~ ${endDate!.toLocal().toIso8601String().substring(0, 10)}',
+                style: TextStyle(fontSize: 18),
+              ),
+              SizedBox(height: 20),
+              Text(
+                '할 일 완료율: ${completionRate.toStringAsFixed(2)}%',
+                style: TextStyle(fontSize: 24),
+              ),
+              SizedBox(height: 10),
+              Text(
+                '영양제 섭취율: ${intakePercentage.toStringAsFixed(2)}%',
+                style: TextStyle(fontSize: 24),
+              ),
+            ] else ...[
+              Text(
+                '날짜 범위를 선택해주세요.',
+                style: TextStyle(fontSize: 18),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 }
+
 
 class ReportPage extends StatelessWidget {
   @override
