@@ -20,7 +20,15 @@ class Nutrition {
   }) : this.takenDosageByDate = takenDosageByDate ?? {};
 
   double get dosagePerCount => totalDosage / count;
-
+  factory Nutrition.fromMap(Map<String, dynamic> data) {
+    return Nutrition(
+      id: data['id'] ?? '',
+      name: data['name'] ?? '',
+      totalDosage: data['totalDosage'] ?? 0,
+      count: data['count'] ?? 0,
+      userEmail: data['userEmail'] ?? '',
+    );
+  }
   factory Nutrition.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return Nutrition(

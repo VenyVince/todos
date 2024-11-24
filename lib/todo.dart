@@ -30,19 +30,13 @@ class Todo {
     required this.userEmail,
   });
   // Firestore DocumentSnapshot을 기반으로 Todo 객체 생성
-  factory Todo.fromDocument(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-
+  factory Todo.fromMap(Map<String, dynamic> data) {
     return Todo(
-      id: doc.id, // Firestore 문서 ID
+      id: data['id'] ?? '',
       title: data['title'] ?? '',
       date: (data['date'] as Timestamp).toDate(),
       memo: data['memo'],
-      alarmTime: data['alarmTime'] != null ? TimeOfDay.fromDateTime((data['alarmTime'] as Timestamp).toDate()) : null,
-      repeat: data['repeat'],
       isDone: data['isDone'] ?? false,
-      futureDates: (data['futureDates'] as List<dynamic>?)?.map((e) => (e as Timestamp).toDate()).toList(),
-      repeatDays: List<String>.from(data['repeatDays'] ?? []),
       userEmail: data['userEmail'] ?? '',
     );
   }
