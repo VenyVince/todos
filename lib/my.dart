@@ -9,7 +9,41 @@ import 'package:excel/excel.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:typed_data';
 import 'dart:io';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+String getUserEmail() {
+  final user = FirebaseAuth.instance.currentUser;
+  return user?.email ?? ''; // 사용자가 로그인되어 있지 않으면 빈 문자열을 반환
+}
+
+Future<List<Todo>> _getTodosFromFirestore(String userEmail) async {
+  try {
+    var snapshot = await FirebaseFirestore.instance
+        .collection('todos')
+        .where('userEmail', isEqualTo: userEmail)  // userEmail을 기준으로 필터링
+        .get();
+
+    // 데이터가 존재하면 Todo 객체로 변환 / excel에 사용
+    return snapshot.docs.map((doc) {
+      return Todo(
+          title: doc['title'] ?? '',  // title이 null일 경우 빈 문자열로 처리
+          date: (doc['date'] as Timestamp?)?.toDate() ?? DateTime.now(),  // date가 null일 경우 현재 시간으로 처리
+          isDone: doc['isDone'] ?? false,  // isDone이 null일 경우 false로 처리
+          userEmail: doc['userEmail']
+      );
+    }).toList();
+  } catch (e) {
+    print('Error getting todos: $e');
+    return [];
+  }
+}
+
+
 
 
 class MyPage extends StatefulWidget {
@@ -81,6 +115,20 @@ class _MyPageState extends State<MyPage> {
   }
 
   Widget _buildMyRecordsView() {
+    List<Todo> displayTodos;
+
+    if (_searchQuery.isEmpty) {
+      // 검색어가 없을 때 모든 할 일을 오름차순 정렬
+      displayTodos = widget.todos.toList();
+      displayTodos.sort((a, b) => a.title.compareTo(b.title));
+    } else {
+      // 검색어가 있을 때 필터링 후 오름차순 정렬
+      displayTodos = widget.todos
+          .where((todo) => todo.title.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .toList();
+      displayTodos.sort((a, b) => a.title.compareTo(b.title));
+    }
+
     return Column(
       children: [
         Padding(
@@ -98,118 +146,108 @@ class _MyPageState extends State<MyPage> {
           ),
         ),
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('todos')
-                .where('userEmail', isEqualTo: 'your_user_email') // 현재 사용자의 이메일로 필터링
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return Center(child: CircularProgressIndicator());
-              }
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return Center(child: Text('할 일이 없습니다.'));
-              }
-
-              // Firestore 데이터를 Todo 객체로 변환
-              List<Todo> todos = snapshot.data!.docs
-                  .map((doc) => Todo.fromDocument(doc))
-                  .toList();
-
-              // 검색어에 따라 필터링
-              List<Todo> displayTodos = todos
-                  .where((todo) =>
-                  todo.title.toLowerCase().contains(_searchQuery.toLowerCase()))
-                  .toList();
-
-              // 오름차순 정렬
-              displayTodos.sort((a, b) => a.title.compareTo(b.title));
-
-              return ListView.builder(
-                itemCount: displayTodos.length,
-                itemBuilder: (context, index) {
-                  final todo = displayTodos[index];
-                  return ListTile(
-                    title: Text(todo.title),
-                    subtitle: Text(todo.date.toString()),
-                    trailing: Icon(
-                      todo.isDone
-                          ? Icons.check_box
-                          : Icons.check_box_outline_blank,
-                    ),
-                  );
-                },
+          child: ListView.builder(
+            itemCount: displayTodos.length,
+            itemBuilder: (context, index) {
+              return ListTile(
+                title: Text(displayTodos[index].title),
+                subtitle: Text(displayTodos[index].date.toString()),
+                trailing: Icon(
+                  displayTodos[index].isDone ? Icons.check_box : Icons.check_box_outline_blank,
+                ),
               );
             },
           ),
         ),
+        ElevatedButton(
+          child: Text('엑셀로 다운로드'),
+          onPressed: () async {
+            String userEmail = getUserEmail(); // 로그인한 사용자의 이메일 가져오기
+            if (userEmail.isNotEmpty) {
+              await _exportToExcelMobile(userEmail); // userEmail을 인자로 전달
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('로그인된 사용자가 없습니다.')),
+              );
+            }
+          },
+        )
       ],
     );
   }
+  Future<void> _exportToExcelMobile(userEmail) async {
+    String userEmail = getUserEmail(); // 로그인한 사용자의 이메일 가져오기
+    if (userEmail.isNotEmpty) {
+      // userEmail을 인자로 전달
+      List<Todo> todos = await _getTodosFromFirestore(userEmail);
+      var excel = Excel.createExcel();
+      Sheet sheetObject = excel['Sheet1'];
 
-  void _exportToExcelMobile() async {
-    var excel = Excel.createExcel();
-    Sheet sheetObject = excel['Sheet1'];
-    sheetObject.cell(CellIndex.indexByString("A1")).value = TextCellValue("제목");
-    sheetObject.cell(CellIndex.indexByString("B1")).value = TextCellValue("날짜");
-    sheetObject.cell(CellIndex.indexByString("C1")).value = TextCellValue("완료 여부");
+      // 헤더 추가
+      sheetObject.cell(CellIndex.indexByString("A1")).value = TextCellValue("제목");
+      sheetObject.cell(CellIndex.indexByString("B1")).value = TextCellValue("날짜");
+      sheetObject.cell(CellIndex.indexByString("C1")).value = TextCellValue("완료 여부");
 
-    for (int i = 0; i < widget.todos.length; i++) {
-      sheetObject.cell(CellIndex.indexByString("A${i + 2}")).value = TextCellValue(widget.todos[i].title);
-      sheetObject.cell(CellIndex.indexByString("B${i + 2}")).value = TextCellValue(widget.todos[i].date.toString());
-      sheetObject.cell(CellIndex.indexByString("C${i + 2}")).value = TextCellValue(widget.todos[i].isDone ? "완료" : "미완료");
+      // 데이터 추가
+      for (int i = 0; i < todos.length; i++) {
+        sheetObject.cell(CellIndex.indexByString("A${i + 2}")).value = TextCellValue(todos[i].title);
+        sheetObject.cell(CellIndex.indexByString("B${i + 2}")).value = TextCellValue(todos[i].date.toString());
+        sheetObject.cell(CellIndex.indexByString("C${i + 2}")).value = TextCellValue(todos[i].isDone ? "완료" : "미완료");
+      }
+
+      final fileBytes = excel.save()!;
+
+      // 임시 파일 저장
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/todos.xlsx');
+      await file.writeAsBytes(fileBytes);
+
+      // 파일 공유
+      await Share.share('엑셀 파일을 다운로드하려면 이 링크를 클릭하세요: ${file.path}');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('로그인된 사용자가 없습니다.')),
+      );
     }
-
-    final fileBytes = excel.save()!;
-
-    // 공유하기
-    await Share.shareXFiles([
-      XFile.fromData(
-        Uint8List.fromList(fileBytes),
-        name: 'todos.xlsx',
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      )
-    ]);
   }
 
-  void _exportToExcel() {
-    var excel = Excel.createExcel();
-    Sheet sheetObject = excel['Sheet1'];
 
-    // 헤더 추가
-    sheetObject.cell(CellIndex.indexByString("A1")).value = TextCellValue("제목");
-    sheetObject.cell(CellIndex.indexByString("B1")).value = TextCellValue("날짜");
-    sheetObject.cell(CellIndex.indexByString("C1")).value = TextCellValue("완료 여부");
 
-    for (int i = 0; i < widget.todos.length; i++) {
-      sheetObject.cell(CellIndex.indexByString("A${i + 2}")).value = TextCellValue(widget.todos[i].title);
-      sheetObject.cell(CellIndex.indexByString("B${i + 2}")).value = TextCellValue(widget.todos[i].date.toString());
-      sheetObject.cell(CellIndex.indexByString("C${i + 2}")).value = TextCellValue(widget.todos[i].isDone ? "완료" : "미완료");
+// 서버에 엑셀 파일 업로드하는 함수
+  Future<String?> _uploadExcelFile(File file) async {
+    final uri = Uri.parse('https://your-server.com/upload');  // 서버 URL
+    final request = http.MultipartRequest('POST', uri)
+      ..files.add(await http.MultipartFile.fromPath('file', file.path));
+
+    final response = await request.send();
+
+    if (response.statusCode == 200) {
+      final responseBody = await response.stream.bytesToString();
+      final jsonResponse = jsonDecode(responseBody);
+      return jsonResponse['downloadUrl'];  // 서버에서 제공한 다운로드 URL
+    } else {
+      print('파일 업로드 실패: ${response.statusCode}');
+      return null;
     }
-    final fileBytes = excel.save();
-    File('할 일.xlsx').writeAsBytesSync(fileBytes!);
   }
-
   Widget _buildFeedbackView() {
     return Center(
       child: ElevatedButton(
         child: Text('피드백 보내기'),
         onPressed: () async {
           final Uri emailLaunchUri = Uri(
-            scheme: 'https',
-            host: 'mail.google.com',
-            path: 'mail/u/0/#send',
+            scheme: 'mailto',
+            path: 'redguy0814@gmail.com',
             query: encodeQueryParameters(<String, String>{
               'subject': 'All Care 앱 피드백',
               'body': '여기에 피드백을 작성해주세요.'
             }),
           );
-
           if (await canLaunch(emailLaunchUri.toString())) {
             await launch(emailLaunchUri.toString());
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Gmail 웹사이트를 열 수 없습니다.')),
+              SnackBar(content: Text('이메일 앱을 열 수 없습니다.')),
             );
           }
         },
@@ -387,6 +425,9 @@ class _MyPageState extends State<MyPage> {
     }
   }
 }
+
+
+// 기존의 _buildStatisticsView() 및 관련 메서드들은 그대로 유지
 
 bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
