@@ -84,15 +84,16 @@ class _MyPageState extends State<MyPage> {
 
     if (_searchQuery.isEmpty) {
       // 검색어가 없을 때 모든 할 일을 오름차순 정렬
-      displayTodos = widget.todos.toList();
-      displayTodos.sort((a, b) => a.title.compareTo(b.title));
+      displayTodos = widget.todos.toList(); // todos는 Firestore에서 로드된 할 일 목록
     } else {
       // 검색어가 있을 때 필터링 후 오름차순 정렬
       displayTodos = widget.todos
           .where((todo) => todo.title.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
-      displayTodos.sort((a, b) => a.title.compareTo(b.title));
     }
+
+// 정렬
+    displayTodos.sort((a, b) => a.title.compareTo(b.title));
 
     return Column(
       children: [
@@ -180,18 +181,20 @@ class _MyPageState extends State<MyPage> {
         child: Text('피드백 보내기'),
         onPressed: () async {
           final Uri emailLaunchUri = Uri(
-            scheme: 'mailto',
-            path: 'redguy0814@gmail.com',
+            scheme: 'https',
+            host: 'mail.google.com',
+            path: 'mail/u/0/#send',
             query: encodeQueryParameters(<String, String>{
               'subject': 'All Care 앱 피드백',
               'body': '여기에 피드백을 작성해주세요.'
             }),
           );
+
           if (await canLaunch(emailLaunchUri.toString())) {
             await launch(emailLaunchUri.toString());
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('이메일 앱을 열 수 없습니다.')),
+              SnackBar(content: Text('Gmail 웹사이트를 열 수 없습니다.')),
             );
           }
         },
@@ -369,9 +372,6 @@ class _MyPageState extends State<MyPage> {
     }
   }
 }
-
-
-// 기존의 _buildStatisticsView() 및 관련 메서드들은 그대로 유지
 
 bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
