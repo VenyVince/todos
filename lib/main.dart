@@ -8,6 +8,7 @@ import 'my.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'login.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,11 +50,30 @@ class _MyAppState extends State<MyApp> {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       themeMode: _themeMode,
-      home: const LoginScreen(),
+      home: FutureBuilder<Map<String, dynamic>>(
+        future: checkLoginStatus(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          } else if (snapshot.data != null && snapshot.data!['isLoggedIn']) {
+            // 로그인 상태가 유지되고 있다면 MyHomePage로 이동
+            return MyHomePage(userEmail: snapshot.data!['userEmail']);
+          } else {
+            // 로그인 상태가 아니라면 LoginScreen으로 이동
+            return const LoginScreen();
+          }
+        },
+      ),
     );
   }
-}
+  Future<Map<String, dynamic>> checkLoginStatus() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    bool rememberMe = prefs.getBool('rememberMe') ?? false;
+    String? userEmail = prefs.getString('userEmail');
 
+    return {'isLoggedIn': rememberMe && userEmail != null, 'userEmail': userEmail};
+  }
+}
 class MyHomePage extends StatefulWidget {
   final String userEmail;
 
@@ -266,7 +286,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 }
 
                 final markerSize = cellSize * markerSizeRatio;
-                final fontSize = markerSize * 0.7; // 마커 크기의 50%로 폰트 크기 설정
+                final fontSize = markerSize * 0.7; // 마커 크기의 70%로 폰트 크기 설정
 
                 // 마커 크기의 최대값 설정 (픽셀 단위)
                 final maxMarkerSize = 24.0;
@@ -280,7 +300,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     height: finalMarkerSize,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Color(0xFFFFA500),
+                      color: Color.fromRGBO(255, 165, 0, 1), // RGB로 오렌지색 지정
                     ),
                     child: Center(
                       child: FittedBox(
@@ -288,7 +308,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         child: Text(
                           '${events.length}',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: Color.fromRGBO(255, 255, 255, 1), // RGB로 흰색 지정
                             fontSize: fontSize,
                             fontWeight: FontWeight.bold,
                           ),
