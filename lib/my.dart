@@ -36,7 +36,6 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   late List<Todo> filteredTodos;
   late List<Nutrition> filteredNutritions;
-  late String userEmail;
   String searchQuery = '';
   DateTime? startDate;
   DateTime? endDate;
@@ -46,7 +45,6 @@ class _SearchPageState extends State<SearchPage> {
     super.initState();
     filteredTodos = widget.todos;
     filteredNutritions = widget.nutritions;
-    userEmail = widget.userEmail;
     sortData(); // 초기 데이터 정렬
   }
 
@@ -261,13 +259,11 @@ class _SearchPageState extends State<SearchPage> {
   }
 }
 
-
-
-
 class StatisticsPage extends StatefulWidget {
-  final List<Todo> todos; // Todo 리스트
+  final List<Todo> todos;
+  final List<Nutrition> nutritions; // Nutrition 리스트 추가
 
-  StatisticsPage({required this.todos}); // 생성자
+  StatisticsPage({required this.todos, required this.nutritions});
 
   @override
   _StatisticsPageState createState() => _StatisticsPageState();
@@ -276,39 +272,12 @@ class StatisticsPage extends StatefulWidget {
 class _StatisticsPageState extends State<StatisticsPage> {
   DateTime? startDate;
   DateTime? endDate;
-  double takenDosage = 0.0;
-  double totalDosage = 0.0;
   double completionRate = 0.0;
-  double intakePercentage = 0.0;
-  List<Nutrition> nutriList = [];
+  List<Map<String, dynamic>> ntakendosagepercent = []; //name에 해당하는 taken값(페센트 값으로)
 
   @override
   void initState() {
     super.initState();
-    fetchNutritions().then((data) {
-      setState(() {
-        nutriList = data;
-      });
-    });
-  }
-
-  Future<List<Nutrition>> fetchNutritions() async {
-    List<Nutrition> nutritions = [];
-
-    QuerySnapshot querySnapshot = await FirebaseFirestore.instance.collection('nutritions').get();
-    for (var doc in querySnapshot.docs) {
-      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-      Nutrition nutrition = Nutrition(
-        id: doc.id,
-        name: data['name'],
-        totalDosage: data['totalDosage'],
-        count: data['count'],
-        userEmail: data['userEmail'],
-        takenDosageByDate: Map<String, double>.from(data['takenDosageByDate']),
-      );
-      nutritions.add(nutrition);
-    }
-    return nutritions;
   }
 
   void _selectDateRange(BuildContext context) async {
@@ -329,11 +298,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
       });
     }
   }
-
   void _calculateStatistics() {
     if (startDate == null || endDate == null) return;
 
-    // 할 일 완료율 계산
+    // 할 일 완료율 계산 (기존 코드와 동일)
     int totalTasks = 0;
     int completedTasks = 0;
     for (var todo in widget.todos) {
@@ -344,20 +312,30 @@ class _StatisticsPageState extends State<StatisticsPage> {
     }
     completionRate = (totalTasks > 0) ? (completedTasks / totalTasks) * 100 : 0;
 
-    // 영양제 섭취량 계산
-    takenDosage = 0.0;
-    totalDosage = 0.0;
-    for (var nutrition in nutriList) {
+    // 영양제 섭취율 계산
+    ntakendosagepercent.clear();
+    for (var nutrition in widget.nutritions) {
+      double totalDosage = 0.0;
+      double takenDosage = 0.0;
+
       nutrition.takenDosageByDate.forEach((date, dosage) {
         DateTime parsedDate = DateTime.parse(date);
         if (parsedDate.isAfter(startDate!) && parsedDate.isBefore(endDate!)) {
           takenDosage += dosage;
+          totalDosage += nutrition.totalDosage;
         }
       });
-      totalDosage += nutrition.totalDosage;
+
+      if (totalDosage > 0) {
+        double takendosagepercent = (takenDosage / totalDosage) * 100;
+        ntakendosagepercent.add({
+          'name': nutrition.name,
+          'takendosagepercent': takendosagepercent,
+        });
+      }
     }
 
-    intakePercentage = (totalDosage > 0) ? (takenDosage / totalDosage) * 100 : 0;
+    setState(() {});
   }
 
   @override
@@ -396,9 +374,18 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 style: TextStyle(fontSize: 24),
               ),
               SizedBox(height: 10),
-              Text(
-                '영양제 섭취율: ${intakePercentage.toStringAsFixed(2)}%',
-                style: TextStyle(fontSize: 24),
+              Text('영양제 섭취율:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Column(
+                children: ntakendosagepercent.map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(item['name'], style: TextStyle(fontSize: 16)),
+                      Text('${item['takendosagepercent'].toStringAsFixed(2)}%', style: TextStyle(fontSize: 16)),
+                    ],
+                  ),
+                )).toList(),
               ),
             ] else ...[
               Text(
@@ -412,6 +399,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
     );
   }
 }
+
 
 
 class ReportPage extends StatelessWidget {
@@ -436,9 +424,9 @@ class ReportPage extends StatelessWidget {
 }
 
 class HomeScreen extends StatefulWidget {
-  final List<Todo> todos; // Todo 리스트
-  final List<Nutrition> nutritions; // Nutrition 리스트
-  final String userEmail; // 생성자에서 userEmail을 받도록 수정
+  final List<Todo> todos;
+  final List<Nutrition> nutritions;
+  final String userEmail;
 
   HomeScreen({required this.todos, required this.nutritions, required this.userEmail});
 
@@ -517,7 +505,7 @@ class _HomeScreenState extends State<HomeScreen> {
         currentPage = SearchPage(todos: todos, nutritions: nutriList, userEmail: widget.userEmail); // 검색 페이지 표시
         break;
       case 2:
-        currentPage = StatisticsPage(todos: todos); // 통계 페이지 표시
+        currentPage = StatisticsPage(todos: todos, nutritions: nutriList); // 통계 페이지 표시
         break;
       case 3:
         currentPage = ReportPage(); // 신고 페이지 표시
