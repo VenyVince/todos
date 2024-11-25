@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz;
 
 // Todo 모델 클래스
 class Todo {
@@ -16,7 +19,7 @@ class Todo {
   List<String> repeatDays;
   String userEmail;
 
- //userid받아오는 섹션 추가해야함
+  //userid받아오는 섹션 추가해야함
   Todo({
     this.id = '',
     required this.title,
@@ -40,6 +43,7 @@ class Todo {
       userEmail: data['userEmail'] ?? '',
     );
   }
+
   // Firestore에서 가져온 데이터를 Map으로 변환
   Map<String, dynamic> toMap() {
     return {
@@ -96,6 +100,31 @@ class TodoPage extends StatefulWidget {
   _TodoPageState createState() => _TodoPageState();
 }
 
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Todo App',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: TodoPage(
+        selectedDate: DateTime.now(),
+        onTodoAdded: (todo) {
+          // 할 일 추가 로직
+        },
+        onTodoRemoved: (todo) {
+          // 할 일 삭제 로직
+        },
+        onTodoListChanged: (todoList) {
+          // 할 일 목록 변경 로직
+        },
+        userEmail: 'user@example.com', // 사용자 이메일을 적절히 설정
+      ),
+    );
+  }
+}
+
 class _TodoPageState extends State<TodoPage> {
   // 할 일 목록 (Firestore에서 가져온 데이터 저장)
   List<Todo> _todoList = [];
@@ -105,17 +134,32 @@ class _TodoPageState extends State<TodoPage> {
   void initState() {
     super.initState();
     _loadTodos(); // 앱 시작 시 Firestore에서 데이터 불러오기
-    _initializeNotifications();
+    tz.initializeTimeZones();
+  }
+
+  void main() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await _initializeNotifications(); // 초기화 호출
+    runApp(MyApp());
   }
 
   Future<void> _scheduleNotification(Todo todo) async {
-    var scheduledNotificationDateTime = DateTime(
+    if (todo.alarmTime == null) return;
+    var scheduledDate = DateTime(
       todo.date.year,
       todo.date.month,
       todo.date.day,
       todo.alarmTime!.hour,
       todo.alarmTime!.minute,
     );
+
+    // 과거 시간 알림 방지
+    if (scheduledDate.isBefore(DateTime.now())) {
+      print("Scheduled date is in the past: $scheduledDate");
+      return;
+    }
+
+    print("Scheduling notification for: $scheduledDate");
 
     var androidPlatformChannelSpecifics = AndroidNotificationDetails(
       'todo_alarm',
@@ -129,24 +173,47 @@ class _TodoPageState extends State<TodoPage> {
       android: androidPlatformChannelSpecifics,
     );
 
-    // 아래 schedule 메소드 호출을 주석 처리합니다.
-    /*
-  await flutterLocalNotificationsPlugin.schedule(
-    todo.hashCode,
-    'Todo Reminder',
-    todo.title,
-    scheduledNotificationDateTime,
-    platformChannelSpecifics,
-  );
-  */
+    await flutterLocalNotificationsPlugin.zonedSchedule(
+      todo.hashCode,
+      'Todo Reminder',
+      todo.title,
+      tz.TZDateTime.from(scheduledDate, tz.local),
+      platformChannelSpecifics,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    );
+
+    print('알림이 예약되었습니다.');
   }
 
   Future<void> _initializeNotifications() async {
-    var initializationSettingsAndroid = AndroidInitializationSettings('app_icon');
-    var initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-    );
-    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+    if (!kIsWeb) {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'todo_alarm', // 채널 ID
+        'Todo Alarms', // 채널 이름
+        importance: Importance.max, // 중요도 설정
+        playSound: true, // 소리 재생 여부
+      );
+
+      const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('app_icon'); // 앱 아이콘 설정
+
+      final InitializationSettings initializationSettings = InitializationSettings(
+        android: initializationSettingsAndroid,
+      );
+
+      await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+      // 알림 채널 생성
+      final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
+      flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+      await androidPlugin?.createNotificationChannel(channel);
+      print('알림 채널이 생성되었습니다.');
+
+      // 권한 요청
+      await requestNotificationPermissions();
+    }
   }
 
   Future<void> _showAlarmSettingDialog(Todo todo) async {
@@ -166,10 +233,16 @@ class _TodoPageState extends State<TodoPage> {
     widget.onTodoListChanged(_todoList); // 콜백 함수 호출
     setState(() {}); // 현재 위젯의 상태만 업데
   }
+
   Future<void> _updateTodoInFirestore(Todo todo) async {
     final todoCollection = FirebaseFirestore.instance.collection('todos');
     try {
       await todoCollection.doc(todo.id).update(todo.toMap());
+      if (todo.isDone) {
+        await flutterLocalNotificationsPlugin.cancel(todo.hashCode);
+      } else {
+        await _scheduleNotification(todo);
+      }
     } catch (e) {
       print("Error updating todo: $e");
     }
@@ -183,7 +256,7 @@ class _TodoPageState extends State<TodoPage> {
         .get();
     setState(() {
       _todoList = snapshot.docs
-          .map((doc) => Todo.fromFirestore(doc))  // Firestore에서 Todo 객체로 변환
+          .map((doc) => Todo.fromFirestore(doc)) // Firestore에서 Todo 객체로 변환
           .toList();
       _updateTodoList();
     });
@@ -208,8 +281,37 @@ class _TodoPageState extends State<TodoPage> {
     final todoCollection = FirebaseFirestore.instance.collection('todos');
     try {
       await todoCollection.doc(todoId).delete();
+      await flutterLocalNotificationsPlugin.cancel(todoId.hashCode);
     } catch (e) {
       print("Error deleting todo: $e");
+    }
+  }
+
+  Future<void> requestNotificationPermissions() async {
+    if (Platform.isAndroid) {
+      final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
+      flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+      // 권한 요청
+      await androidPlugin?.requestNotificationsPermission();
+      print('알림 권한 요청 완료');
+
+    }
+  }
+
+  Future<void> _createNotificationChannel() async {
+    if (Platform.isAndroid) {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'todo_alarm',
+        'Todo Alarms',
+        importance: Importance.max,
+        playSound: true,
+      );
+
+      final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
+      flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+      await androidPlugin?.createNotificationChannel(channel);
     }
   }
 
@@ -228,7 +330,8 @@ class _TodoPageState extends State<TodoPage> {
           final todo = filteredTodoList[index];
           // 각 Todo 항목을 Dismissible 위젯으로 감싸 스와이프로 삭제 가능하게 함
           return Dismissible(
-            key: Key(todo.id),//key: UniqueKey(),
+            key: Key(todo.id),
+            //key: UniqueKey(),
             direction: DismissDirection.endToStart,
             onDismissed: (direction) {
               setState(() {
@@ -332,28 +435,31 @@ class _TodoPageState extends State<TodoPage> {
   void _showTodoDetails(BuildContext context, Todo todo) {
     showModalBottomSheet(
       context: context,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       isScrollControlled: true,
-      builder: (context) => FractionallySizedBox(
-        heightFactor: 0.5,
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(todo.title, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              SizedBox(height: 10),
-              _buildMemoField(todo),
-              SizedBox(height: 10),
-              _buildAlarmAndRepeatRow(todo),
-              SizedBox(height: 20),
-              _buildCompletionButton(todo),
-              Divider(),
-              _buildDeleteButton(todo),
-            ],
+      builder: (context) =>
+          FractionallySizedBox(
+            heightFactor: 0.5,
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(todo.title, style: TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 10),
+                  _buildMemoField(todo),
+                  SizedBox(height: 10),
+                  _buildAlarmAndRepeatRow(todo),
+                  SizedBox(height: 20),
+                  _buildCompletionButton(todo),
+                  Divider(),
+                  _buildDeleteButton(todo),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
     );
   }
 
@@ -361,10 +467,13 @@ class _TodoPageState extends State<TodoPage> {
   Widget _buildMemoField(Todo todo) {
     return TextFormField(
       initialValue: todo.memo,
-      onChanged: (value) => setState(() {
-        todo.memo = value.trim().isEmpty ? null : value;
-        _updateTodoList();
-      }),
+      onChanged: (value) =>
+          setState(() {
+            todo.memo = value
+                .trim()
+                .isEmpty ? null : value;
+            _updateTodoList();
+          }),
       decoration: InputDecoration(
         hintText: todo.memo?.isEmpty ?? true ? '메모' : '',
         hintStyle: TextStyle(color: Colors.grey),
@@ -394,7 +503,8 @@ class _TodoPageState extends State<TodoPage> {
         child: _buildOptionBox(
           icon: Icons.alarm,
           text: todo.alarmTime != null
-              ? '${todo.alarmTime!.hour}:${todo.alarmTime!.minute.toString().padLeft(2, '0')}'
+              ? '${todo.alarmTime!.hour}:${todo.alarmTime!.minute.toString()
+              .padLeft(2, '0')}'
               : '알람 시간',
         ),
       ),
@@ -425,6 +535,8 @@ class _TodoPageState extends State<TodoPage> {
         todo.alarmTime = newTime;
         _generateFutureDates(todo);
       });
+      await _updateTodoInFirestore(todo);
+      _scheduleNotification(todo);
       _updateTodoList();
       // 여기에 알람 설정 로직 추가
       _scheduleNotification(todo);
@@ -487,15 +599,18 @@ class _TodoPageState extends State<TodoPage> {
           if (todo.repeatDays.isNotEmpty) {
             do {
               currentDate = currentDate.add(Duration(days: 1));
-            } while (!todo.repeatDays.contains(['월', '화', '수', '목', '금', '토', '일'][currentDate.weekday - 1]));
+            } while (!todo.repeatDays.contains(
+                ['월', '화', '수', '목', '금', '토', '일'][currentDate.weekday - 1]));
           }
           break;
         case '매월':
         // 다음 달의 같은 날짜로 설정
-          currentDate = DateTime(currentDate.year, currentDate.month + 1, currentDate.day);
+          currentDate = DateTime(
+              currentDate.year, currentDate.month + 1, currentDate.day);
           // 만약 다음 달에 해당 날짜가 없다면 (예: 1월 31일 -> 2월 28일)
           if (currentDate.day != todo.date.day) {
-            currentDate = DateTime(currentDate.year, currentDate.month, 0); // 해당 월의 마지막 날로 설정
+            currentDate = DateTime(
+                currentDate.year, currentDate.month, 0); // 해당 월의 마지막 날로 설정
           }
           break;
         default:
@@ -543,11 +658,16 @@ class _TodoPageState extends State<TodoPage> {
   // 완료 버튼
   Widget _buildCompletionButton(Todo todo) {
     return ElevatedButton(
-      onPressed: () async{
+      onPressed: () async {
         setState(() {
           todo.isDone = !todo.isDone;
         });
         await _updateTodoInFirestore(todo);
+        if (todo.isDone) {
+          await flutterLocalNotificationsPlugin.cancel(todo.hashCode);
+        } else {
+          await _scheduleNotification(todo);
+        }
         Navigator.pop(context);
       },
       child: Text(todo.isDone ? '완료 취소' : '완료하기'),
@@ -558,7 +678,6 @@ class _TodoPageState extends State<TodoPage> {
   Widget _buildDeleteButton(Todo todo) {
     return ElevatedButton.icon(
       onPressed: () {
-
         showDialog(
           context: context,
           builder: (BuildContext context) {
@@ -710,6 +829,7 @@ class _TodoPageState extends State<TodoPage> {
     }
     _updateTodoList();
   }
+
 // Todo 페이지의 UI를 구성하는 build 메서드
 
 // Todo 항목의 반복 설정 텍스트를 반환하는 함수
@@ -914,4 +1034,5 @@ class _TodoPageState extends State<TodoPage> {
       child: Text(option),
     );
   }
+
 }
