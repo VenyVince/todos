@@ -2,19 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'todo.dart'; // Todo 클래스를 가져옵니다.
 import 'nut.dart';  // Nutrition 클래스를 가져옵니다.
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 class MyPage extends StatelessWidget {
   final List<Todo> todos; // Todo 리스트
   final List<Nutrition> nutritions; // Nutrition 리스트
+  final String userEmail;
 
-  MyPage({required this.todos, required this.nutritions}); // 생성자
+  MyPage({required this.todos, required this.nutritions, required this.userEmail});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '나의 기록',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: HomeScreen(todos: todos, nutritions: nutritions), // HomeScreen에 todos와 nutritions 전달
+      home: HomeScreen(todos: todos, nutritions: nutritions, userEmail: userEmail,), // HomeScreen에 todos와 nutritions 전달
     );
   }
 }
@@ -22,8 +25,9 @@ class MyPage extends StatelessWidget {
 class SearchPage extends StatefulWidget {
   final List<Todo> todos;
   final List<Nutrition> nutritions;
+  final String userEmail;
 
-  SearchPage({required this.todos, required this.nutritions});
+  SearchPage({required this.todos, required this.nutritions, required this.userEmail});
 
   @override
   _SearchPageState createState() => _SearchPageState();
@@ -33,7 +37,6 @@ class _SearchPageState extends State<SearchPage> {
   late List<Todo> filteredTodos;
   late List<Nutrition> filteredNutritions;
   String searchQuery = '';
-
   DateTime? startDate;
   DateTime? endDate;
 
@@ -50,42 +53,152 @@ class _SearchPageState extends State<SearchPage> {
     filteredNutritions.sort((a, b) => a.name.compareTo(b.name)); // 이름 오름차순 정렬
   }
 
+  Future<void> _enterDateRange(BuildContext context) async {
+    int? startYear;
+    int? startMonth;
+    int? endYear;
+    int? endMonth;
+
+    List<int> years = [for (int i = 2000; i <= DateTime.now().year; i++) i];
+    List<int> months = [for (int i = 1; i <= 12; i++) i];
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder( // StatefulBuilder 추가
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('날짜 범위 입력'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: DropdownButton<int>(
+                          hint: Text('시작 연도'),
+                          value: startYear,
+                          onChanged: (int? newValue) {
+                            setState(() {
+                              startYear = newValue;
+                            });
+                          },
+                          items: years.map<DropdownMenuItem<int>>((int value) {
+                            return DropdownMenuItem<int>(
+                              value: value,
+                              child: Text('$value'),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Flexible(
+                        child: DropdownButton<int>(
+                          hint: Text('시작 월'),
+                          value: startMonth,
+                          onChanged: (int? newValue) {
+                            setState(() {
+                              startMonth = newValue;
+                            });
+                          },
+                          items: months.map<DropdownMenuItem<int>>((int value) {
+                            return DropdownMenuItem<int>(
+                              value: value,
+                              child: Text('$value'),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: DropdownButton<int>(
+                          hint: Text('종료 연도'),
+                          value: endYear,
+                          onChanged: (int? newValue) {
+                            setState(() {
+                              endYear = newValue;
+                            });
+                          },
+                          items: years.map<DropdownMenuItem<int>>((int value) {
+                            return DropdownMenuItem<int>(
+                              value: value,
+                              child: Text('$value'),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Flexible(
+                        child: DropdownButton<int>(
+                          hint: Text('종료 월'),
+                          value: endMonth,
+                          onChanged: (int? newValue) {
+                            setState(() {
+                              endMonth = newValue;
+                            });
+                          },
+                          items: months.map<DropdownMenuItem<int>>((int value) {
+                            return DropdownMenuItem<int>(
+                              value: value,
+                              child: Text('$value'),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // 취소 시 닫기
+                  },
+                  child: Text('취소'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    if (startYear != null && startMonth != null && endYear != null && endMonth != null) {
+                      setState(() {
+                        startDate = DateTime(startYear!, startMonth!, 1);
+                        endDate = DateTime(endYear!, endMonth!, 1);
+                        filterData(); // 날짜 선택 후 필터링
+                      });
+                      Navigator.of(context).pop();
+                    } else {
+                      // 입력값이 유효하지 않으면 에러 처리
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('시작 날짜나 종료 날짜가 제대로 선택되지 않았습니다.')),
+                      );
+                    }
+                  },
+                  child: Text('확인'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void filterData() {
     setState(() {
       filteredTodos = widget.todos.where((todo) {
-        return todo.title.toLowerCase().contains(searchQuery.toLowerCase());
+        return todo.title.toLowerCase().contains(searchQuery.toLowerCase()) &&
+            todo.userEmail == widget.userEmail; // 유저 이메일 필터링 추가
       }).toList();
-
       filteredNutritions = widget.nutritions.where((nutrition) {
-        return nutrition.name.toLowerCase().contains(searchQuery.toLowerCase());
+        return nutrition.name.toLowerCase().contains(searchQuery.toLowerCase()) &&
+            nutrition.userEmail == widget.userEmail; // 유저 이메일 필터링
       }).toList();
-
       if (startDate != null && endDate != null) {
-        filteredTodos = filteredTodos.where((todo) =>
-        todo.date.isAfter(startDate!) && todo.date.isBefore(endDate!)).toList();
+        filteredTodos = filteredTodos.where((todo) => todo.date.isAfter(startDate!) && todo.date.isBefore(endDate!)).toList();
       }
     });
-  }
-
-  Future<void> _selectDate(BuildContext context) async {
-    // 시작 날짜와 종료 날짜를 선택할 수 있는 다이얼로그 표시
-    DateTimeRange? picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-      initialDateRange: DateTimeRange(
-        start: startDate ?? DateTime.now(),
-        end: endDate ?? DateTime.now(),
-      ),
-    );
-
-    if (picked != null) {
-      setState(() {
-        startDate = picked.start; // 시작 날짜 업데이트
-        endDate = picked.end;     // 종료 날짜 업데이트
-        filterData();             // 날짜 선택 후 데이터 필터링
-      });
-    }
   }
 
   @override
@@ -113,7 +226,7 @@ class _SearchPageState extends State<SearchPage> {
                 ),
                 IconButton(
                   icon: Icon(Icons.calendar_today),
-                  onPressed: () => _selectDate(context), // 캘린더 아이콘 클릭 시 날짜 선택
+                  onPressed: () => _enterDateRange(context), // 캘린더 아이콘 클릭 시 날짜 선택
                 ),
               ],
             ),
@@ -146,15 +259,134 @@ class _SearchPageState extends State<SearchPage> {
   }
 }
 
-class StatisticsPage extends StatelessWidget {
+class StatisticsPage extends StatefulWidget {
+  final List<Todo> todos;
+  final List<Nutrition> nutritions; // Nutrition 리스트 추가
+
+  StatisticsPage({required this.todos, required this.nutritions});
+
+  @override
+  _StatisticsPageState createState() => _StatisticsPageState();
+}
+
+class _StatisticsPageState extends State<StatisticsPage> {
+  DateTime? startDate;
+  DateTime? endDate;
+  double completionRate = 0.0;
+  List<Map<String, dynamic>> ntakendosagepercent = []; //name에 해당하는 taken값(페센트 값으로)
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  void _selectDateRange(BuildContext context) async {
+    DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+      initialDateRange: DateTimeRange(
+        start: startDate ?? DateTime.now(),
+        end: endDate ?? DateTime.now(),
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        startDate = picked.start;
+        endDate = picked.end;
+        _calculateStatistics();
+      });
+    }
+  }
+  void _calculateStatistics() {
+    if (startDate == null || endDate == null) return;
+
+    // 할 일 완료율 계산 (기존 코드와 동일)
+    int totalTasks = 0;
+    int completedTasks = 0;
+    for (var todo in widget.todos) {
+      if (todo.date.isAfter(startDate!) && todo.date.isBefore(endDate!)) {
+        totalTasks++;
+        if (todo.isDone) completedTasks++;
+      }
+    }
+    completionRate = (totalTasks > 0) ? (completedTasks / totalTasks) * 100 : 0;
+
+    // 영양제 섭취율 계산
+    ntakendosagepercent.clear();
+    for (var nutrition in widget.nutritions) {
+      double totalDosage = nutrition.totalDosage.toDouble(); // Ensure this is double
+      double takenDosage = nutrition.takenDosage.toDouble(); // Ensure this is double
+
+      if (totalDosage > 0) {
+        double takendosagepercent = (takenDosage / totalDosage) * 100;
+        ntakendosagepercent.add({
+          'name': nutrition.name,
+          'takendosagepercent': takendosagepercent,
+        });
+      }
+    }
+
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('통계'),
       ),
-      body: Center(
-        child: Text('통계 기능이 여기에 구현됩니다.'),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '기간 선택: ',
+                  style: TextStyle(fontSize: 18),
+                ),
+                IconButton(
+                  icon: Icon(Icons.calendar_today),
+                  onPressed: () => _selectDateRange(context),
+                ),
+              ],
+            ),
+            SizedBox(height: 20),
+            if (startDate != null && endDate != null) ...[
+              Text(
+                '선택한 기간: ${startDate!.toLocal().toIso8601String().substring(0, 10)} ~ ${endDate!.toLocal().toIso8601String().substring(0, 10)}',
+                style: TextStyle(fontSize: 18),
+              ),
+              SizedBox(height: 20),
+              Text(
+                '할 일 완료율: ${completionRate.toStringAsFixed(2)}%',
+                style: TextStyle(fontSize: 24),
+              ),
+              SizedBox(height: 10),
+              Text('영양제 섭취율:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Column(
+                children: ntakendosagepercent.map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(item['name'], style: TextStyle(fontSize: 16)),
+                      Text('${item['takendosagepercent'].toStringAsFixed(2)}%', style: TextStyle(fontSize: 16)),
+                    ],
+                  ),
+                )).toList(),
+              ),
+            ] else ...[
+              Text(
+                '날짜 범위를 선택해주세요.',
+                style: TextStyle(fontSize: 18),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -168,17 +400,25 @@ class ReportPage extends StatelessWidget {
         title: Text('신고'),
       ),
       body: Center(
-        child: Text('신고 기능이 여기에 구현됩니다.'),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            '오류 사항을 redguy0814@gmail.com으로 신고해 주세요.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 18),
+          ),
+        ),
       ),
     );
   }
 }
 
 class HomeScreen extends StatefulWidget {
-  final List<Todo> todos; // Todo 리스트
-  final List<Nutrition> nutritions; // Nutrition 리스트
+  final List<Todo> todos;
+  final List<Nutrition> nutritions;
+  final String userEmail;
 
-  HomeScreen({required this.todos, required this.nutritions}); // 생성자
+  HomeScreen({required this.todos, required this.nutritions, required this.userEmail});
 
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -187,7 +427,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late List<Todo> todos;
   late List<Nutrition> nutriList;
-
   int _selectedPageIndex = 0; // 현재 선택된 페이지 인덱스
 
   @override
@@ -195,20 +434,30 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     todos = widget.todos; // 전달받은 todos 사용
     nutriList = widget.nutritions; // 전달받은 nutritions 사용
-    loadInitialData(); // 필요에 따라 초기 데이터 로드 메서드 호출 가능
+    String userEmail = FirebaseAuth.instance.currentUser!.email!; // 현재 로그인한 사용자의 이메일
+    loadInitialData(userEmail); // 필요에 따라 초기 데이터 로드 메서드 호출 가능
   }
 
-  Future<void> loadInitialData() async {
-    // Firestore에서 Todo 데이터 로드 (필요 시)
-    QuerySnapshot todoSnapshot = await FirebaseFirestore.instance.collection('todos').get();
-    todos = todoSnapshot.docs.map((doc) => Todo.fromMap(doc.data() as Map<String, dynamic>)).toList();
+  Future<void> loadInitialData(String userEmail) async {
+    // Firestore에서 Todo 데이터 로드 (사용자 이메일로 필터링)
+    QuerySnapshot todoSnapshot = await FirebaseFirestore.instance
+        .collection('todos')
+        .where('userEmail', isEqualTo: userEmail) // 이메일로 필터링
+        .get();
 
-    // Firestore에서 Nutrition 데이터 로드 (필요 시)
-    QuerySnapshot nutritionSnapshot = await FirebaseFirestore.instance.collection('nutrition').get();
-    nutriList = nutritionSnapshot.docs.map((doc) => Nutrition.fromMap(doc.data() as Map<String, dynamic>)).toList();
+    todos = todoSnapshot.docs.map((doc) => Todo.fromFirestore(doc)).toList();
+
+    // Firestore에서 Nutrition 데이터 로드 (사용자 이메일로 필터링)
+    QuerySnapshot nutritionSnapshot = await FirebaseFirestore.instance
+        .collection('nutritions') // 컬렉션 이름 확인
+        .where('userEmail', isEqualTo: userEmail) // 이메일로 필터링
+        .get();
+
+    nutriList = nutritionSnapshot.docs.map((doc) => Nutrition.fromFirestore(doc)).toList(); // fromFirestore 사용
 
     setState(() {});
   }
+
 
   void showDownloadMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -243,10 +492,10 @@ class _HomeScreenState extends State<HomeScreen> {
         currentPage = Container(); // 기본값으로 빈 화면 표시
         break;
       case 1:
-        currentPage = SearchPage(todos: todos, nutritions: nutriList); // 검색 페이지 표시
+        currentPage = SearchPage(todos: todos, nutritions: nutriList, userEmail: widget.userEmail); // 검색 페이지 표시
         break;
       case 2:
-        currentPage = StatisticsPage(); // 통계 페이지 표시
+        currentPage = StatisticsPage(todos: todos, nutritions: nutriList); // 통계 페이지 표시
         break;
       case 3:
         currentPage = ReportPage(); // 신고 페이지 표시
@@ -257,20 +506,20 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('나의 기록'),
-        actions: [
+      appBar :AppBar(
+        title :Text ('나의 기록'),
+        actions :[
           IconButton(
-            icon: Icon(Icons.download),
-            onPressed: showDownloadMessage,
+            icon :Icon(Icons.download),
+            onPressed :showDownloadMessage,
           ),
         ],
       ),
-      body: Column(
-        children: [
+      body :Column(
+        children :[
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
+            mainAxisAlignment :MainAxisAlignment.spaceAround,
+            children :[
               ElevatedButton(
                 onPressed:_navigateToSearch,
                 child :Text ('검색'),
@@ -285,7 +534,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          Expanded(child : currentPage), // 현재 선택된 페이지 표시
+          Expanded(child :currentPage), // 현재 선택된 페이지 표시
         ],
       ),
     );
@@ -299,3 +548,4 @@ bool isSameDay(DateTime? a, DateTime? b) {
   }
   return a.year == b.year && a.month == b.month && a.day == b.day;
 }
+
