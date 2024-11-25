@@ -1,123 +1,62 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter/material.dart' as material; // DateUtils 사용을 위한 import
 
+// 영양제 정보를 저장하는 클래스
 class Nutrition {
-  String id;
-  String name;
-  int totalDosage;
-  int count;
-  Map<String, double> takenDosageByDate;
-  String userEmail;
+  String name; // 영양제 이름
+  int totalDosage; // 총 복용량 (mg)
+  int count; // 섭취 개수
+  double takenDosage; // 현재 복용량 (mg)
+  DateTime date; // 날짜
+  bool taken; // 전체 복용 여부
 
   Nutrition({
-    this.id = '',
     required this.name,
     required this.totalDosage,
     required this.count,
-    required this.userEmail,
-    Map<String, double>? takenDosageByDate,
-  }) : this.takenDosageByDate = takenDosageByDate ?? {};
+    required this.date,
+    this.takenDosage = 0,
+    this.taken = false,
+  });
 
+  // 1개당 복용량 계산 (소수점 포함)
   double get dosagePerCount => totalDosage / count;
 
-  factory Nutrition.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return Nutrition(
-      id: doc.id,
-      name: data['name'],
-      totalDosage: data['totalDosage'],
-      count: data['count'],
-      userEmail: data['userEmail'],
-      takenDosageByDate: Map<String, double>.from(data['takenDosageByDate'] ?? {}),
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'name': name,
-      'totalDosage': totalDosage,
-      'count': count,
-      'userEmail': userEmail,
-      'takenDosageByDate': takenDosageByDate,
-    };
+  // 복용 완료 여부 업데이트
+  void updateTaken() {
+    taken = takenDosage >= totalDosage;
   }
 }
 
+// 영양제 페이지 위젯
 class NutPage extends StatefulWidget {
-  final DateTime selectedDate;
-  final String userEmail;
+  final DateTime selectedDate; // 선택된 날짜
+  final Function(Nutrition) onNutritionAdded; // 영양제 추가 콜백
+  final Function(Nutrition) onNutritionRemoved; // 영양제 삭제 콜백
 
   NutPage({
     required this.selectedDate,
-    required this.userEmail,
+    required this.onNutritionAdded,
+    required this.onNutritionRemoved,
   });
 
   @override
   _NutPageState createState() => _NutPageState();
 }
 
+// 영양제 페이지의 상태를 관리하는 클래스
 class _NutPageState extends State<NutPage> {
-  List<Nutrition> _nutritions = [];
-  final TextEditingController _nutritionController = TextEditingController();
-  final TextEditingController _dosageController = TextEditingController();
-  final TextEditingController _countController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _loadNutritions();
-  }
-
-  Future<void> _loadNutritions() async {
-    final nutritionCollection = FirebaseFirestore.instance.collection('nutritions');
-    QuerySnapshot snapshot = await nutritionCollection.where('userEmail', isEqualTo: widget.userEmail).get();
-
-    setState(() {
-      _nutritions = snapshot.docs
-          .map((doc) => Nutrition.fromFirestore(doc))
-          .toList();
-    });
-  }
-
-  Future<void> _addNutritionToFirestore(Nutrition nutrition) async {
-    final nutritionCollection = FirebaseFirestore.instance.collection('nutritions');
-    try {
-      DocumentReference docRef = await nutritionCollection.add(nutrition.toMap());
-      setState(() {
-        nutrition.id = docRef.id;
-        _nutritions.add(nutrition);
-      });
-    } catch (e) {
-      print("Error adding nutrition: $e");
-    }
-  }
-
-  Future<void> _deleteNutritionFromFirestore(String nutritionId) async {
-    final nutritionCollection = FirebaseFirestore.instance.collection('nutritions');
-    try {
-      await nutritionCollection.doc(nutritionId).delete();
-      setState(() {
-        _nutritions.removeWhere((nutrition) => nutrition.id == nutritionId);
-      });
-    } catch (e) {
-      print("Error deleting nutrition: $e");
-    }
-  }
-
-  Future<void> _updateNutritionInFirestore(Nutrition nutrition) async {
-    final nutritionCollection = FirebaseFirestore.instance.collection('nutritions');
-    try {
-      await nutritionCollection.doc(nutrition.id).update(nutrition.toMap());
-    } catch (e) {
-      print("Error updating nutrition: $e");
-    }
-  }
+  final List<Nutrition> _nutritions = []; // 영양제 목록
+  final TextEditingController _nutritionController = TextEditingController(); // 영양제 이름 입력 컨트롤러
+  final TextEditingController _dosageController = TextEditingController(); // 총 복용량 입력 컨트롤러
+  final TextEditingController _countController = TextEditingController(); // 섭취 개수 입력 컨트롤러
 
   @override
   Widget build(BuildContext context) {
-    final dateString = DateFormat('yyyy-MM-dd').format(widget.selectedDate);
-    double totalPercentage = _calculateTotalPercentage(dateString);
+    // 선택된 날짜에 해당하는 영양제 필터링
+    final filteredNutritions = _nutritions.where((nutrition) =>
+        material.DateUtils.isSameDay(nutrition.date, widget.selectedDate)).toList();
+    double percentage = _calculatePercentage(filteredNutritions); // 섭취율 계산
 
     return Scaffold(
       body: Column(
@@ -125,41 +64,43 @@ class _NutPageState extends State<NutPage> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
-              '오늘의 영양제 섭취율: ${totalPercentage.toStringAsFixed(1)}%',
+              '오늘의 영양제 섭취율: ${percentage.toStringAsFixed(1)}%',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ),
           LinearProgressIndicator(
-            value: totalPercentage / 100,
+            value: percentage / 100,
             backgroundColor: Colors.grey[200],
             valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
           ),
           Expanded(
             child: ListView.builder(
-              itemCount: _nutritions.length,
+              itemCount: filteredNutritions.length,
               itemBuilder: (context, index) {
-                return _buildNutritionItem(_nutritions[index], dateString);
+                return _buildNutritionItem(filteredNutritions[index]); // 영양제 항목 표시
               },
             ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddNutritionDialog,
+        onPressed: _showAddNutritionDialog, // 새 영양제 추가 다이얼로그 표시
         child: Icon(Icons.add),
       ),
     );
   }
 
-  Widget _buildNutritionItem(Nutrition nutrition, String dateString) {
-    double takenDosage = nutrition.takenDosageByDate[dateString] ?? 0;
-    double percentage = (takenDosage / nutrition.totalDosage) * 100;
+  // 각 영양제 항목을 표시하는 위젯 생성
+  Widget _buildNutritionItem(Nutrition nutrition) {
+    double percentage = (nutrition.takenDosage / nutrition.totalDosage) * 100; // 섭취 비율 계산
 
     return Dismissible(
-      key: Key(nutrition.id),
+      key: UniqueKey(),
       direction: DismissDirection.endToStart,
       onDismissed: (direction) {
-        _deleteNutritionFromFirestore(nutrition.id);
+        setState(() {
+          _nutritions.remove(nutrition); // 스와이프 시 영양제 삭제
+        });
       },
       background: Container(
         alignment: Alignment.centerRight,
@@ -167,71 +108,63 @@ class _NutPageState extends State<NutPage> {
         color: Colors.red,
         child: Icon(Icons.delete, color: Colors.white),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              title: Text(nutrition.name),
-              subtitle: Text('${takenDosage.toStringAsFixed(2)}/${nutrition.totalDosage} mg'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.remove),
-                    onPressed: () => _removeDosage(nutrition, dateString),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.add),
-                    onPressed: () => _takeDosage(nutrition, dateString),
-                  ),
-                ],
-              ),
-              onTap: () => _showNutritionDetails(context, nutrition, dateString),
-            ),
-            SizedBox(height: 4), // ListTile과 ProgressIndicator 사이의 간격
-            LinearProgressIndicator(
-              value: takenDosage / nutrition.totalDosage,
-              backgroundColor: Colors.grey[200],
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-            ),
-            SizedBox(height: 4), // ProgressIndicator 아래의 간격
-            Text(
-              '${percentage.toStringAsFixed(1)}% 복용',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showNutritionDetails(BuildContext context, Nutrition nutrition, String dateString) {
-    double takenDosage = nutrition.takenDosageByDate[dateString] ?? 0;
-    showModalBottomSheet(
-      context: context,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      isScrollControlled: true,
-      builder: (context) => FractionallySizedBox(
-        heightFactor: 0.6,
+      child: Card(
+        margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: EdgeInsets.all(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(nutrition.name, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              SizedBox(height: 10),
-              Text('총 복용량 : ${nutrition.totalDosage} mg'),
-              Text('섭취 개수 : ${nutrition.count}개'),
-              Text('1개당 복용량 : ${nutrition.dosagePerCount.toStringAsFixed(2)} mg'),
-              Text('현재 복용량 : ${takenDosage.toStringAsFixed(2)} mg'),
-              Text('복용한 개수 : ${(takenDosage / nutrition.dosagePerCount).toStringAsFixed(2)}개'),
-              SizedBox(height: 20),
+              Text(
+                nutrition.name,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '${nutrition.takenDosage.toStringAsFixed(2)}/${nutrition.totalDosage} mg (${nutrition.count}개 중 ${(nutrition.takenDosage / nutrition.dosagePerCount).toStringAsFixed(2)}개 복용)',
+                style: TextStyle(fontSize: 14),
+              ),
+              SizedBox(height: 4),
               LinearProgressIndicator(
-                value: takenDosage / nutrition.totalDosage,
+                value: nutrition.takenDosage / nutrition.totalDosage,
                 backgroundColor: Colors.grey[200],
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+              ),
+              SizedBox(height: 2),
+              Text(
+                '${percentage.toStringAsFixed(1)}% 복용',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+              SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      ElevatedButton(
+                        onPressed: () => _takeDosage(nutrition), // 복용 버튼 클릭 시
+                        child: Icon(Icons.add), // + 아이콘
+                        style: ElevatedButton.styleFrom(
+                          shape: CircleBorder(),
+                          padding: EdgeInsets.all(12),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () => _removeDosage(nutrition), // 취소 버튼 클릭 시
+                        child: Icon(Icons.remove), // - 아이콘
+                        style: ElevatedButton.styleFrom(
+                          shape: CircleBorder(),
+                          padding: EdgeInsets.all(12),
+                        ),
+                      ),
+                    ],
+                  ),
+                  ElevatedButton(
+                    onPressed: () => _showNutritionDetails(context, nutrition), // 상세정보 버튼 클릭 시
+                    child: Text('상세정보'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -240,57 +173,128 @@ class _NutPageState extends State<NutPage> {
     );
   }
 
-  void _showAddNutritionDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('영양제 추가'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _nutritionController,
-                decoration: InputDecoration(labelText: '영양제 이름'),
+  // 영양제 상세 정보를 표시하는 바텀 시트
+  void _showNutritionDetails(BuildContext context, Nutrition nutrition) {
+    showModalBottomSheet(
+      context : context,
+      shape : RoundedRectangleBorder(borderRadius : BorderRadius.vertical(top : Radius.circular(20))),
+      isScrollControlled : true,
+      builder : (context) => FractionallySizedBox(
+        heightFactor :0.6,
+        child : Padding(
+          padding : const EdgeInsets.all(20.0),
+          child : Column(
+            crossAxisAlignment : CrossAxisAlignment.start,
+            children : [
+              Text(nutrition.name, style : TextStyle(fontSize :24, fontWeight : FontWeight.bold)),
+              SizedBox(height :10),
+              Text('총 복용량 : ${nutrition.totalDosage} mg'),
+              Text('섭취 개수 : ${nutrition.count}개'),
+              Text('1개당 복용량 : ${nutrition.dosagePerCount.toStringAsFixed(2)} mg'),
+              Text('현재 복용량 : ${nutrition.takenDosage.toStringAsFixed(2)} mg'),
+              Text('복용한 개수 : ${(nutrition.takenDosage / nutrition.dosagePerCount).toStringAsFixed(2)}개'),
+              SizedBox(height :20),
+              LinearProgressIndicator(
+                value : nutrition.takenDosage / nutrition.totalDosage,
+                backgroundColor : Colors.grey[200],
+                valueColor : AlwaysStoppedAnimation<Color>(Colors.green),
               ),
-              TextField(
-                controller: _dosageController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(labelText: '총 복용량 (mg)'),
+              SizedBox(height :10),
+              Text('${((nutrition.takenDosage / nutrition.totalDosage) *100).toStringAsFixed(1)}% 복용',
+                  style :TextStyle(fontSize :16, fontWeight : FontWeight.bold)),
+              SizedBox(height :20),
+              Row (
+                mainAxisAlignment : MainAxisAlignment.spaceEvenly,
+                children : [
+                  ElevatedButton.icon (
+                    onPressed :() {
+                      _takeDosage(nutrition);
+                      Navigator.pop(context);
+                    },
+                    icon : Icon(Icons.add), // + 아이콘
+                    label :Text('1개 복용'),
+                  ),
+                  ElevatedButton.icon (
+                    onPressed :() {
+                      _removeDosage(nutrition);
+                      Navigator.pop(context);
+                    },
+                    icon : Icon(Icons.remove), // - 아이콘
+                    label :Text('1개 취소'),
+
+                  ),
+                ],
               ),
-              TextField(
-                controller: _countController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(labelText: '개수'),
+              Divider(height :30),
+              ElevatedButton.icon (
+                onPressed :(){
+                  setState(() {
+                    _nutritions.remove(nutrition); // 영양제 삭제
+                  });
+                  Navigator.pop(context);
+                },
+                icon : Icon(Icons.delete, color : Colors.white),
+                label :Text('삭제'),
+                style :
+                ElevatedButton.styleFrom(backgroundColor :
+                Colors.red),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text('취소'),
+        ),
+      ),
+    );
+  }
+
+  // 새 영양제를 추가하는 다이얼로그를 표시하는 메서드
+  void _showAddNutritionDialog() {
+    showDialog(
+      context : context,
+      builder :(BuildContext context) {
+        return AlertDialog(
+          title :Text("새 영양제 추가"),
+          content : Column (
+            mainAxisSize : MainAxisSize.min,
+            children : [
+              TextField (
+                controller :_nutritionController,
+                decoration : InputDecoration(labelText :"영양제 이름"),
+              ),
+              SizedBox(height :16),
+              TextField (
+                controller :_dosageController,
+                decoration :
+                InputDecoration(labelText :"총 복용량 (mg)"),
+                keyboardType :
+                TextInputType.number,
+              ),
+              SizedBox(height :16),
+              TextField (
+                controller :
+                _countController,
+                decoration :
+                InputDecoration(labelText :"섭취 개수"),
+                keyboardType :
+                TextInputType.number,
+              ),
+            ],
+          ),
+          actions :
+          [
+            TextButton (
+              onPressed :
+                  () => Navigator.of(context).pop(),
+              child :
+              Text("취소"),
             ),
-            TextButton(
-              onPressed: () {
-                final name = _nutritionController.text;
-                final totalDosage = int.tryParse(_dosageController.text) ?? 0;
-                final count = int.tryParse(_countController.text) ?? 0;
-
-                if (name.isNotEmpty && totalDosage > 0 && count > 0) {
-                  final newNutrition = Nutrition(
-                    name: name,
-                    totalDosage: totalDosage,
-                    count: count,
-                    userEmail: widget.userEmail,
-                  );
-                  _addNutritionToFirestore(newNutrition);
-
-                  Navigator.pop(context);
-                }
+            ElevatedButton (
+              onPressed :
+                  () {
+                _addNutrition();
+                Navigator.of(context).pop();
               },
-              child: Text('추가'),
+              child :
+              Text("추가"),
             ),
           ],
         );
@@ -298,33 +302,50 @@ class _NutPageState extends State<NutPage> {
     );
   }
 
-  void _takeDosage(Nutrition nutrition, String dateString) {
-    setState(() {
-      double currentDosage = nutrition.takenDosageByDate[dateString] ?? 0;
-      nutrition.takenDosageByDate[dateString] = currentDosage + nutrition.dosagePerCount;
-    });
-    _updateNutritionInFirestore(nutrition);
+  // 새 영양제를 리스트에 추가하는 메서드
+  void _addNutrition() {
+    if (_nutritionController.text.isNotEmpty &&
+        _dosageController.text.isNotEmpty &&
+        _countController.text.isNotEmpty) {
+      setState(() {
+        _nutritions.add(Nutrition(
+          name:_nutritionController.text,
+          totalDosage:int.parse(_dosageController.text),
+          count:int.parse(_countController.text),
+          date :widget.selectedDate,
+        ));
+        _nutritionController.clear();
+        _dosageController.clear();
+        _countController.clear();
+      });
+    }
   }
 
-  void _removeDosage(Nutrition nutrition, String dateString) {
+  // 복용량을 증가시키는 메서드
+  void _takeDosage(Nutrition nutrition) {
     setState(() {
-      double currentDosage = nutrition.takenDosageByDate[dateString] ?? 0;
-      if (currentDosage >= nutrition.dosagePerCount) {
-        nutrition.takenDosageByDate[dateString] = currentDosage - nutrition.dosagePerCount;
+      if (nutrition.takenDosage + nutrition.dosagePerCount <= nutrition.totalDosage) {
+        nutrition.takenDosage += nutrition.dosagePerCount;
+        nutrition.updateTaken();
       }
     });
-    _updateNutritionInFirestore(nutrition);
   }
 
-  double _calculateTotalPercentage(String dateString) {
-    double totalDosage = 0;
-    double totalTakenDosage = 0;
+  // 복용량을 감소시키는 메서드
+  void _removeDosage(Nutrition nutrition) {
+    setState(() {
+      if (nutrition.takenDosage >= nutrition.dosagePerCount) {
+        nutrition.takenDosage -= nutrition.dosagePerCount;
+        nutrition.updateTaken();
+      }
+    });
+  }
 
-    for (var nutrition in _nutritions) {
-      totalDosage += nutrition.totalDosage;
-      totalTakenDosage += nutrition.takenDosageByDate[dateString] ?? 0;
-    }
-
-    return totalDosage == 0 ? 0 : (totalTakenDosage / totalDosage) * 100;
+  // 전체 영양제의 섭취 퍼센티지를 계산하는 메서드
+  double _calculatePercentage(List<Nutrition> nutritions) {
+    if (nutritions.isEmpty) return 0.0;
+    double totalDosage = nutritions.fold(0.0, (sum, n) => sum + n.totalDosage);
+    double totalTakenDosage = nutritions.fold(0.0, (sum, n) => sum + n.takenDosage);
+    return (totalTakenDosage / totalDosage) * 100;
   }
 }
