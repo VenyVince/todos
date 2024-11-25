@@ -16,7 +16,6 @@ class Todo {
   List<String> repeatDays;
   String userEmail;
 
- //userid받아오는 섹션 추가해야함
   Todo({
     this.id = '',
     required this.title,
@@ -29,6 +28,7 @@ class Todo {
     this.repeatDays = const [],
     required this.userEmail,
   });
+
   // Firestore DocumentSnapshot을 기반으로 Todo 객체 생성
   factory Todo.fromMap(Map<String, dynamic> data) {
     return Todo(
@@ -76,27 +76,26 @@ class Todo {
   }
 }
 
-// TodoPage 수정: 콜백 함수 추가
 class TodoPage extends StatefulWidget {
   final DateTime selectedDate;
   final Function(Todo) onTodoAdded;
   final Function(Todo) onTodoRemoved;
   final Function(List<Todo>) onTodoListChanged; // 할 일 목록 변경 콜백
-  final String userEmail; // 추가된 부분
+  final String userEmail;
 
   TodoPage({
     required this.selectedDate,
     required this.onTodoAdded,
     required this.onTodoRemoved,
     required this.onTodoListChanged,
-    required this.userEmail, // 추가된 부분
+    required this.userEmail,
   });
 
   @override
   _TodoPageState createState() => _TodoPageState();
 }
 
-class _TodoPageState extends State<TodoPage> {
+class _TodoPageState extends State<TodoPage> { //알림설정 파트
   // 할 일 목록 (Firestore에서 가져온 데이터 저장)
   List<Todo> _todoList = [];
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -117,7 +116,7 @@ class _TodoPageState extends State<TodoPage> {
       todo.alarmTime!.minute,
     );
 
-    var androidPlatformChannelSpecifics = AndroidNotificationDetails(
+    var androidPlatformChannelSpecifics = AndroidNotificationDetails(//알림설정 파트
       'todo_alarm',
       'Todo Alarms',
       importance: Importance.max,
@@ -125,7 +124,7 @@ class _TodoPageState extends State<TodoPage> {
       showWhen: true,
     );
 
-    var platformChannelSpecifics = NotificationDetails(
+    var platformChannelSpecifics = NotificationDetails(//알림설정 파트
       android: androidPlatformChannelSpecifics,
     );
 
@@ -142,7 +141,7 @@ class _TodoPageState extends State<TodoPage> {
   }
 
   Future<void> _initializeNotifications() async {
-    var initializationSettingsAndroid = AndroidInitializationSettings('app_icon');
+    var initializationSettingsAndroid = AndroidInitializationSettings('app_icon');//알림설정 파트
     var initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
