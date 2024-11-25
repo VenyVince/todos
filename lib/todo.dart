@@ -16,7 +16,7 @@ class Todo {
   List<String> repeatDays;
   String userEmail;
 
- //userid받아오는 섹션 추가해야함
+  //userid받아오는 섹션 추가해야함
   Todo({
     this.id = '',
     required this.title,

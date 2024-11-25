@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -15,24 +14,11 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
-class MyApp extends StatefulWidget {
-  @override
-  _MyAppState createState() => _MyAppState();
-
-  static _MyAppState of(BuildContext context) => context.findAncestorStateOfType<_MyAppState>()!;
-}
-
-class _MyAppState extends State<MyApp> {
-  ThemeMode _themeMode = ThemeMode.system;
-
-  void changeTheme(ThemeMode themeMode) {
-    setState(() {
-      _themeMode = themeMode;
-    });
-  }
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -47,20 +33,20 @@ class _MyAppState extends State<MyApp> {
         brightness: Brightness.dark,
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        // 다크 모드의 다른 테마 설정
       ),
-      themeMode: _themeMode,
-      home: const LoginScreen(),
+      themeMode: ThemeMode.system, // 시스템 설정에 따라 테마 변경
+      home: const MyHomePage(),
+      // home: const LoginScreen(),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  final String userEmail;
-
-  const MyHomePage({Key? key, required this.userEmail}) : super(key: key);
+  const MyHomePage({super.key});
 
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  State<MyHomePage> createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
@@ -90,19 +76,16 @@ class _MyHomePageState extends State<MyHomePage> {
             _todoList = updatedList;
           });
         },
-        userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
       ),
       NutPage(
         selectedDate: _selectedDay!,
-        userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
+        onNutritionAdded: _onNutritionAdded,
+        onNutritionRemoved: _onNutritionRemoved,
       ),
       MyPage(todos: _todoList, nutritions: _nutritionList),
     ];
   }
-  bool _isAllTodosCompletedForDay(DateTime day) {
-    var todosForDay = _todoList.where((todo) => isSameDay(todo.date, day)).toList();
-    return todosForDay.isNotEmpty && todosForDay.every((todo) => todo.isDone);
-  }
+
   // Todo 추가 콜백
   void _onTodoAdded(Todo todo) {
     setState(() {
@@ -130,16 +113,14 @@ class _MyHomePageState extends State<MyHomePage> {
   // Nutrition 제거 콜백
   void _onNutritionRemoved(Nutrition nutrition) {
     setState(() {
-      _nutritionList.removeWhere((n) => n.id == nutrition.id);
+      _nutritionList.remove(nutrition);
       _updateMyPage();
     });
   }
 
   // MyPage 업데이트
   void _updateMyPage() {
-    setState(() {
-      _widgetOptions[2] = MyPage(todos: _todoList, nutritions: _nutritionList);
-    });
+    _widgetOptions[2] = MyPage(todos: _todoList, nutritions: _nutritionList);
   }
 
   void _onItemTapped(int index) {
@@ -175,17 +156,13 @@ class _MyHomePageState extends State<MyHomePage> {
                 _todoList = updatedList;
               });
             },
-            userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
           );
           // Nut 페이지의 선택된 날짜 업데이트
           _widgetOptions[1] = NutPage(
             selectedDate: selectedDay,
-            userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
-          );
-
-
+            onNutritionAdded: _onNutritionAdded,
+            onNutritionRemoved: _onNutritionRemoved,);
         });
-
       },
       onFormatChanged: (format) {
         if (_calendarFormat != format) {
@@ -232,36 +209,19 @@ class _MyHomePageState extends State<MyHomePage> {
         titleCentered: true,
       ),
       calendarBuilders: CalendarBuilders(
-        defaultBuilder: (context, day, focusedDay) {
-          if (_isAllTodosCompletedForDay(day)) {
-            return Container(
-              margin: const EdgeInsets.all(4.0),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.3),
-                shape: BoxShape.circle,
-              ),
-              child: Text(
-                '${day.day}',
-                style: TextStyle(color: Colors.black),
-              ),
-            );
-          }
-          return null;
-        },
         markerBuilder: (context, date, events) {
           if (events.isNotEmpty) {
             return LayoutBuilder(
               builder: (context, constraints) {
                 return Positioned(
-                  right: constraints.maxWidth * 0.1,
-                  top: constraints.maxHeight * 0.1,
+                  right: constraints.maxWidth * 0.1, // 날짜 셀 너비의 10% 지점에 위치
+                  top: constraints.maxHeight * 0.1,  // 날짜 셀 높이의 10% 지점에 위치
                   child: Container(
-                    width: constraints.maxWidth * 0.05,
-                    height: constraints.maxWidth * 0.1,
+                    width: constraints.maxWidth * 0.06,  // 날짜 셀 너비의 10%로 축소
+                    height: constraints.maxWidth * 0.1, // 정사각형 모양 유지
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Color(0xFFFFA500),
+                      color: Color(0xFFFFA500), // 주황색
                     ),
                     child: Center(
                       child: FittedBox(
@@ -270,7 +230,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           '${events.length}',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: constraints.maxWidth * 0.1,
+                            fontSize: constraints.maxWidth * 0.1, // 날짜 셀 너비의 6%로 축소
                             fontWeight: FontWeight.bold,
                           ),
                         ),

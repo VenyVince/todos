@@ -6,7 +6,7 @@ class SignUpScreen extends StatefulWidget {
 
   @override
   _SignUpScreenState createState() => _SignUpScreenState();
-}
+} bool _showPasswordHint = false;
 
 class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _emailController = TextEditingController();
@@ -19,6 +19,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('비밀번호가 일치하지 않습니다.')),
+      );
+      return;
+    }
+    String password = _passwordController.text;
+    String? passwordError = _validatePassword(password);
+    if (passwordError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(passwordError)),
       );
       return;
     }
@@ -53,6 +61,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
         SnackBar(content: Text('오류가 발생했습니다. 다시 시도해주세요.')),
       );
     }
+  }
+
+  String? _validatePassword(String password) {
+    if (password.length < 8) {
+      return '비밀번호는 최소 8자리 이상이어야 합니다.';
+    }
+    if (!RegExp(r'[0-9]').hasMatch(password)) {
+      return '비밀번호에는 최소 하나의 숫자가 포함되어야 합니다.';
+    }
+    if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) {
+      return '비밀번호에는 최소 하나의 특수 문자가 포함되어야 합니다.';
+    }
+
+    // 모든 조건을 만족하면 null 반환
+    return null;
   }
 
   @override
@@ -134,6 +157,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       style: TextStyle(color: Colors.black),
                       controller: _passwordController,
                       obscureText: true,
+                      onTap: () {
+                        setState(() {
+                          _showPasswordHint = true; // 비밀번호 힌트 표시
+                        });
+                      },
+                      onEditingComplete: () {
+                        setState(() {
+                          _showPasswordHint = false; // 포커스가 다른 곳으로 이동하면 힌트 숨김
+                        });
+                      },
                       decoration: const InputDecoration(
                         suffixIcon: Icon(
                           Icons.visibility_off,
@@ -146,6 +179,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         ),
                       ),
                     ),
+                    if (_showPasswordHint) // 힌트 텍스트 조건부 표시
+                      const Text(
+                        '비밀번호: 8~16자의 영문 대/소문자, 숫자, 특수문자를 사용해 주세요.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+
                     TextField(
                       style: TextStyle(color: Colors.black),
                       controller: _confirmPasswordController,
