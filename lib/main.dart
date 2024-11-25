@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -7,6 +8,7 @@ import 'my.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'login.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,11 +16,24 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  runApp(const MyApp());
+  runApp(MyApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class MyApp extends StatefulWidget {
+  @override
+  _MyAppState createState() => _MyAppState();
+
+  static _MyAppState of(BuildContext context) => context.findAncestorStateOfType<_MyAppState>()!;
+}
+
+class _MyAppState extends State<MyApp> {
+  ThemeMode _themeMode = ThemeMode.system;
+
+  void changeTheme(ThemeMode themeMode) {
+    setState(() {
+      _themeMode = themeMode;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,20 +48,39 @@ class MyApp extends StatelessWidget {
         brightness: Brightness.dark,
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
-        // 다크 모드의 다른 테마 설정
       ),
-      themeMode: ThemeMode.system, // 시스템 설정에 따라 테마 변경
-      home: const MyHomePage(),
-      // home: const LoginScreen(),
+      themeMode: _themeMode,
+      home: FutureBuilder<Map<String, dynamic>>(
+        future: checkLoginStatus(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          } else if (snapshot.data != null && snapshot.data!['isLoggedIn']) {
+            // 로그인 상태가 유지되고 있다면 MyHomePage로 이동
+            return MyHomePage(userEmail: snapshot.data!['userEmail']);
+          } else {
+            // 로그인 상태가 아니라면 LoginScreen으로 이동
+            return const LoginScreen();
+          }
+        },
+      ),
     );
   }
-}
+  Future<Map<String, dynamic>> checkLoginStatus() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    bool rememberMe = prefs.getBool('rememberMe') ?? false;
+    String? userEmail = prefs.getString('userEmail');
 
+    return {'isLoggedIn': rememberMe && userEmail != null, 'userEmail': userEmail};
+  }
+}
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+  final String userEmail;
+
+  const MyHomePage({Key? key, required this.userEmail}) : super(key: key);
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  _MyHomePageState createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
@@ -56,7 +90,6 @@ class _MyHomePageState extends State<MyHomePage> {
   DateTime? _selectedDay;
   List<Todo> _todoList = [];
 
-  // 추가: Todo와 Nutrition 리스트를 저장할 변수
   final List<Todo> _ontodoList = [];
   final List<Nutrition> _nutritionList = [];
 
@@ -76,17 +109,21 @@ class _MyHomePageState extends State<MyHomePage> {
             _todoList = updatedList;
           });
         },
+        userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
       ),
       NutPage(
         selectedDate: _selectedDay!,
-        onNutritionAdded: _onNutritionAdded,
-        onNutritionRemoved: _onNutritionRemoved,
+        userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
       ),
-      MyPage(todos: _todoList, nutritions: _nutritionList),
+      MyPage(todos: _todoList, nutritions: _nutritionList, userEmail: widget.userEmail,),
     ];
   }
 
-  // Todo 추가 콜백
+  bool _isAllTodosCompletedForDay(DateTime day) {
+    var todosForDay = _todoList.where((todo) => isSameDay(todo.date, day)).toList();
+    return todosForDay.isNotEmpty && todosForDay.every((todo) => todo.isDone);
+  }
+
   void _onTodoAdded(Todo todo) {
     setState(() {
       _todoList.add(todo);
@@ -94,7 +131,6 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  // Todo 제거 콜백
   void _onTodoRemoved(Todo todo) {
     setState(() {
       _todoList.remove(todo);
@@ -102,7 +138,6 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  // Nutrition 추가 콜백
   void _onNutritionAdded(Nutrition nutrition) {
     setState(() {
       _nutritionList.add(nutrition);
@@ -110,17 +145,17 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  // Nutrition 제거 콜백
   void _onNutritionRemoved(Nutrition nutrition) {
     setState(() {
-      _nutritionList.remove(nutrition);
+      _nutritionList.removeWhere((n) => n.id == nutrition.id);
       _updateMyPage();
     });
   }
 
-  // MyPage 업데이트
   void _updateMyPage() {
-    _widgetOptions[2] = MyPage(todos: _todoList, nutritions: _nutritionList);
+    setState(() {
+      _widgetOptions[2] = MyPage(todos: _todoList, nutritions: _nutritionList, userEmail: widget.userEmail,);
+    });
   }
 
   void _onItemTapped(int index) {
@@ -146,7 +181,6 @@ class _MyHomePageState extends State<MyHomePage> {
         setState(() {
           _selectedDay = selectedDay;
           _focusedDay = focusedDay;
-          // Todo 페이지의 선택된 날짜 업데이트
           _widgetOptions[0] = TodoPage(
             selectedDate: selectedDay,
             onTodoAdded: _onTodoAdded,
@@ -156,12 +190,12 @@ class _MyHomePageState extends State<MyHomePage> {
                 _todoList = updatedList;
               });
             },
+            userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
           );
-          // Nut 페이지의 선택된 날짜 업데이트
           _widgetOptions[1] = NutPage(
             selectedDate: selectedDay,
-            onNutritionAdded: _onNutritionAdded,
-            onNutritionRemoved: _onNutritionRemoved,);
+            userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
+          );
         });
       },
       onFormatChanged: (format) {
@@ -209,28 +243,73 @@ class _MyHomePageState extends State<MyHomePage> {
         titleCentered: true,
       ),
       calendarBuilders: CalendarBuilders(
+        defaultBuilder: (context, day, focusedDay) {
+          if (_isAllTodosCompletedForDay(day)) {
+            return Container(
+              margin: const EdgeInsets.all(4.0),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.3),
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                '${day.day}',
+                style: TextStyle(color: Colors.black),
+              ),
+            );
+          }
+          return null;
+        },
         markerBuilder: (context, date, events) {
           if (events.isNotEmpty) {
             return LayoutBuilder(
               builder: (context, constraints) {
+                final cellSize = constraints.maxWidth;
+                final screenWidth = MediaQuery.of(context).size.width;
+
+                // 화면 크기에 따라 마커 크기 비율 조정
+                double markerSizeRatio;
+                if (screenWidth < 360) {
+                  markerSizeRatio = 0.22; // 매우 작은 화면
+                } else if (screenWidth < 480) {
+                  markerSizeRatio = 0.20; // 작은 화면
+                } else if (screenWidth < 600) {
+                  markerSizeRatio = 0.18; // 중소형 화면
+                } else if (screenWidth < 720) {
+                  markerSizeRatio = 0.16; // 중형 화면
+                } else if (screenWidth < 1024) {
+                  markerSizeRatio = 0.13; // 대형 화면
+                } else if (screenWidth < 1200) {
+                  markerSizeRatio = 0.10; // 매우 큰 화면
+                } else {
+                  markerSizeRatio = 0.07; // 초대형 화면
+                }
+
+                final markerSize = cellSize * markerSizeRatio;
+                final fontSize = markerSize * 0.7; // 마커 크기의 70%로 폰트 크기 설정
+
+                // 마커 크기의 최대값 설정 (픽셀 단위)
+                final maxMarkerSize = 24.0;
+                final finalMarkerSize = markerSize > maxMarkerSize ? maxMarkerSize : markerSize;
+
                 return Positioned(
-                  right: constraints.maxWidth * 0.1, // 날짜 셀 너비의 10% 지점에 위치
-                  top: constraints.maxHeight * 0.1,  // 날짜 셀 높이의 10% 지점에 위치
+                  right: cellSize * 0.05,
+                  top: cellSize * 0.05,
                   child: Container(
-                    width: constraints.maxWidth * 0.06,  // 날짜 셀 너비의 10%로 축소
-                    height: constraints.maxWidth * 0.1, // 정사각형 모양 유지
+                    width: finalMarkerSize,
+                    height: finalMarkerSize,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Color(0xFFFFA500), // 주황색
+                      color: Color.fromRGBO(255, 165, 0, 1), // RGB로 오렌지색 지정
                     ),
                     child: Center(
                       child: FittedBox(
-                        fit: BoxFit.scaleDown,
+                        fit: BoxFit.contain,
                         child: Text(
                           '${events.length}',
                           style: TextStyle(
-                            color: Colors.white,
-                            fontSize: constraints.maxWidth * 0.1, // 날짜 셀 너비의 6%로 축소
+                            color: Color.fromRGBO(255, 255, 255, 1), // RGB로 흰색 지정
+                            fontSize: fontSize,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
