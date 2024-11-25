@@ -312,22 +312,25 @@ class _StatisticsPageState extends State<StatisticsPage> {
     }
     completionRate = (totalTasks > 0) ? (completedTasks / totalTasks) * 100 : 0;
 
-    // 영양제 섭취율 계산
-    ntakendosagepercent.clear();
+    // 영양제 섭취율 계산 (평균 섭취율로 변경)
+    ntakendosagepercent.clear(); // 리스트 초기화
+
     for (var nutrition in widget.nutritions) {
-      double totalDosage = 0.0;
+      double totalDosage = nutrition.totalDosage.toDouble(); // 총 복용량
       double takenDosage = 0.0;
+      int count = 0; // 섭취한 날짜 수
 
       nutrition.takenDosageByDate.forEach((date, dosage) {
-        DateTime parsedDate = DateTime.parse(date);
-        if (parsedDate.isAfter(startDate!) && parsedDate.isBefore(endDate!)) {
-          takenDosage += dosage;
-          totalDosage += nutrition.totalDosage;
+        DateTime takenDate = DateTime.parse(date);
+        if (takenDate.isAfter(startDate!.subtract(Duration(days: 1))) && takenDate.isBefore(endDate!.add(Duration(days: 1)))) {
+          takenDosage += dosage; // 섭취량 합산
+          count++; // 섭취한 날짜 수 증가
         }
       });
 
-      if (totalDosage > 0) {
-        double takendosagepercent = (takenDosage / totalDosage) * 100;
+      if (count > 0) {
+        double averageTakenDosage = takenDosage / count; // 평균 섭취량 계산
+        double takendosagepercent = (averageTakenDosage / totalDosage) * 100; // 섭취 비율 계산
         ntakendosagepercent.add({
           'name': nutrition.name,
           'takendosagepercent': takendosagepercent,
@@ -335,7 +338,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
       }
     }
 
-    setState(() {});
+    setState(() {}); // UI 갱신
   }
 
   @override
@@ -376,16 +379,17 @@ class _StatisticsPageState extends State<StatisticsPage> {
               SizedBox(height: 10),
               Text('영양제 섭취율:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               Column(
-                children: ntakendosagepercent.map((item) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(item['name'], style: TextStyle(fontSize: 16)),
-                      Text('${item['takendosagepercent'].toStringAsFixed(2)}%', style: TextStyle(fontSize: 16)),
-                    ],
-                  ),
-                )).toList(),
+                children: ntakendosagepercent.map((item) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('${item['name']} : ${item['takendosagepercent'].toStringAsFixed(2)}%', style: TextStyle(fontSize: 16)),
+                      ],
+                    ),
+                  );
+                }).toList(),
               ),
             ] else ...[
               Text(
@@ -399,8 +403,6 @@ class _StatisticsPageState extends State<StatisticsPage> {
     );
   }
 }
-
-
 
 class ReportPage extends StatelessWidget {
   @override
@@ -455,19 +457,18 @@ class _HomeScreenState extends State<HomeScreen> {
         .where('userEmail', isEqualTo: userEmail) // 이메일로 필터링
         .get();
 
-    todos = todoSnapshot.docs.map((doc) => Todo.fromMap(doc.data() as Map<String, dynamic>)).toList();
+    todos = todoSnapshot.docs.map((doc) => Todo.fromFirestore(doc)).toList();
 
     // Firestore에서 Nutrition 데이터 로드 (사용자 이메일로 필터링)
     QuerySnapshot nutritionSnapshot = await FirebaseFirestore.instance
-        .collection('nutrition')
+        .collection('nutritions') // 컬렉션 이름 확인
         .where('userEmail', isEqualTo: userEmail) // 이메일로 필터링
         .get();
 
-    nutriList = nutritionSnapshot.docs.map((doc) => Nutrition.fromMap(doc.data() as Map<String, dynamic>)).toList();
+    nutriList = nutritionSnapshot.docs.map((doc) => Nutrition.fromFirestore(doc)).toList(); // fromFirestore 사용
 
     setState(() {});
   }
-
 
   void showDownloadMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
