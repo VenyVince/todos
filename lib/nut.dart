@@ -1,25 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 
 class Nutrition {
   String id;
   String name;
   int totalDosage;
   int count;
-  Map<String, double> takenDosageByDate;
+  double takenDosage;
+  DateTime date;
+  bool taken;
   String userEmail;
+
 
   Nutrition({
     this.id = '',
     required this.name,
     required this.totalDosage,
     required this.count,
+    required this.date,
+    this.takenDosage = 0,
+    this.taken = false,
     required this.userEmail,
-    Map<String, double>? takenDosageByDate,
-  }) : this.takenDosageByDate = takenDosageByDate ?? {};
-
-  double get dosagePerCount => totalDosage / count;
+  });
   factory Nutrition.fromMap(Map<String, dynamic> data) {
     return Nutrition(
       id: data['id'] ?? '',
@@ -27,8 +29,15 @@ class Nutrition {
       totalDosage: data['totalDosage'] ?? 0,
       count: data['count'] ?? 0,
       userEmail: data['userEmail'] ?? '',
+      date: (data['date'] as Timestamp).toDate(),
     );
   }
+  double get dosagePerCount => totalDosage / count;
+
+  void updateTaken() {
+    taken = takenDosage >= totalDosage;
+  }
+
   factory Nutrition.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return Nutrition(
@@ -36,8 +45,11 @@ class Nutrition {
       name: data['name'],
       totalDosage: data['totalDosage'],
       count: data['count'],
+      date: (data['date'] as Timestamp).toDate(),
+      takenDosage: data['takenDosage'].toDouble(),
+      taken: data['taken'],
       userEmail: data['userEmail'],
-      takenDosageByDate: Map<String, double>.from(data['takenDosageByDate'] ?? {}),
+
     );
   }
 
@@ -46,18 +58,24 @@ class Nutrition {
       'name': name,
       'totalDosage': totalDosage,
       'count': count,
+      'takenDosage': takenDosage,
+      'date': date,
+      'taken': taken,
       'userEmail': userEmail,
-      'takenDosageByDate': takenDosageByDate,
     };
   }
 }
 
 class NutPage extends StatefulWidget {
   final DateTime selectedDate;
+  final Function(Nutrition) onNutritionAdded;
+  final Function(Nutrition) onNutritionRemoved;
   final String userEmail;
 
   NutPage({
     required this.selectedDate,
+    required this.onNutritionAdded,
+    required this.onNutritionRemoved,
     required this.userEmail,
   });
 
@@ -79,7 +97,7 @@ class _NutPageState extends State<NutPage> {
 
   Future<void> _loadNutritions() async {
     final nutritionCollection = FirebaseFirestore.instance.collection('nutritions');
-    QuerySnapshot snapshot = await nutritionCollection.where('userEmail', isEqualTo: widget.userEmail).get();
+    QuerySnapshot snapshot = await nutritionCollection.where('userEmail',isEqualTo: widget.userEmail).get();
 
     setState(() {
       _nutritions = snapshot.docs
@@ -94,7 +112,6 @@ class _NutPageState extends State<NutPage> {
       DocumentReference docRef = await nutritionCollection.add(nutrition.toMap());
       setState(() {
         nutrition.id = docRef.id;
-        _nutritions.add(nutrition);
       });
     } catch (e) {
       print("Error adding nutrition: $e");
@@ -105,9 +122,6 @@ class _NutPageState extends State<NutPage> {
     final nutritionCollection = FirebaseFirestore.instance.collection('nutritions');
     try {
       await nutritionCollection.doc(nutritionId).delete();
-      setState(() {
-        _nutritions.removeWhere((nutrition) => nutrition.id == nutritionId);
-      });
     } catch (e) {
       print("Error deleting nutrition: $e");
     }
@@ -124,8 +138,9 @@ class _NutPageState extends State<NutPage> {
 
   @override
   Widget build(BuildContext context) {
-    final dateString = DateFormat('yyyy-MM-dd').format(widget.selectedDate);
-    double totalPercentage = _calculateTotalPercentage(dateString);
+    final filteredNutritions = _nutritions.where((nutrition) =>
+        DateUtils.isSameDay(nutrition.date, widget.selectedDate)).toList();
+    double percentage = _calculatePercentage(filteredNutritions);
 
     return Scaffold(
       body: Column(
@@ -133,20 +148,20 @@ class _NutPageState extends State<NutPage> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
-              '오늘의 영양제 섭취율: ${totalPercentage.toStringAsFixed(1)}%',
+              '오늘의 영양제 섭취율: ${percentage.toStringAsFixed(1)}%',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ),
           LinearProgressIndicator(
-            value: totalPercentage / 100,
+            value: percentage / 100,
             backgroundColor: Colors.grey[200],
             valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
           ),
           Expanded(
             child: ListView.builder(
-              itemCount: _nutritions.length,
+              itemCount: filteredNutritions.length,
               itemBuilder: (context, index) {
-                return _buildNutritionItem(_nutritions[index], dateString);
+                return _buildNutritionItem(filteredNutritions[index]);
               },
             ),
           ),
@@ -159,14 +174,16 @@ class _NutPageState extends State<NutPage> {
     );
   }
 
-  Widget _buildNutritionItem(Nutrition nutrition, String dateString) {
-    double takenDosage = nutrition.takenDosageByDate[dateString] ?? 0;
-    double percentage = (takenDosage / nutrition.totalDosage) * 100;
+  Widget _buildNutritionItem(Nutrition nutrition) {
+    double percentage = (nutrition.takenDosage / nutrition.totalDosage) * 100;
 
     return Dismissible(
-      key: Key(nutrition.id),
+      key: UniqueKey(),
       direction: DismissDirection.endToStart,
       onDismissed: (direction) {
+        setState(() {
+          _nutritions.remove(nutrition);
+        });
         _deleteNutritionFromFirestore(nutrition.id);
       },
       background: Container(
@@ -175,48 +192,72 @@ class _NutPageState extends State<NutPage> {
         color: Colors.red,
         child: Icon(Icons.delete, color: Colors.white),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              title: Text(nutrition.name),
-              subtitle: Text('${takenDosage.toStringAsFixed(2)}/${nutrition.totalDosage} mg'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+      child: Card(
+        margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        child: Padding(
+          padding: EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                nutrition.name,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '${nutrition.takenDosage.toStringAsFixed(2)}/${nutrition.totalDosage} mg (${nutrition.count}개 중 ${(nutrition.takenDosage / nutrition.dosagePerCount).toStringAsFixed(2)}개 복용)',
+                style: TextStyle(fontSize: 14),
+              ),
+              SizedBox(height: 4),
+              LinearProgressIndicator(
+                value: nutrition.takenDosage / nutrition.totalDosage,
+                backgroundColor: Colors.grey[200],
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+              ),
+              SizedBox(height: 2),
+              Text(
+                '${percentage.toStringAsFixed(1)}% 복용',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+              SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(
-                    icon: Icon(Icons.remove),
-                    onPressed: () => _removeDosage(nutrition, dateString),
+                  Row(
+                    children: [
+                      ElevatedButton(
+                        onPressed: () => _takeDosage(nutrition),
+                        child: Icon(Icons.add),
+                        style: ElevatedButton.styleFrom(
+                          shape: CircleBorder(),
+                          padding: EdgeInsets.all(12),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () => _removeDosage(nutrition),
+                        child: Icon(Icons.remove),
+                        style: ElevatedButton.styleFrom(
+                          shape: CircleBorder(),
+                          padding: EdgeInsets.all(12),
+                        ),
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    icon: Icon(Icons.add),
-                    onPressed: () => _takeDosage(nutrition, dateString),
+                  ElevatedButton(
+                    onPressed: () => _showNutritionDetails(context, nutrition),
+                    child: Text('상세정보'),
                   ),
                 ],
               ),
-              onTap: () => _showNutritionDetails(context, nutrition, dateString),
-            ),
-            SizedBox(height: 4), // ListTile과 ProgressIndicator 사이의 간격
-            LinearProgressIndicator(
-              value: takenDosage / nutrition.totalDosage,
-              backgroundColor: Colors.grey[200],
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-            ),
-            SizedBox(height: 4), // ProgressIndicator 아래의 간격
-            Text(
-              '${percentage.toStringAsFixed(1)}% 복용',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  void _showNutritionDetails(BuildContext context, Nutrition nutrition, String dateString) {
-    double takenDosage = nutrition.takenDosageByDate[dateString] ?? 0;
+  void _showNutritionDetails(BuildContext context, Nutrition nutrition) {
     showModalBottomSheet(
       context: context,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -233,11 +274,11 @@ class _NutPageState extends State<NutPage> {
               Text('총 복용량 : ${nutrition.totalDosage} mg'),
               Text('섭취 개수 : ${nutrition.count}개'),
               Text('1개당 복용량 : ${nutrition.dosagePerCount.toStringAsFixed(2)} mg'),
-              Text('현재 복용량 : ${takenDosage.toStringAsFixed(2)} mg'),
-              Text('복용한 개수 : ${(takenDosage / nutrition.dosagePerCount).toStringAsFixed(2)}개'),
+              Text('현재 복용량 : ${nutrition.takenDosage.toStringAsFixed(2)} mg'),
+              Text('복용한 개수 : ${(nutrition.takenDosage / nutrition.dosagePerCount).toStringAsFixed(2)}개'),
               SizedBox(height: 20),
               LinearProgressIndicator(
-                value: takenDosage / nutrition.totalDosage,
+                value: nutrition.takenDosage / nutrition.totalDosage,
                 backgroundColor: Colors.grey[200],
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
               ),
@@ -291,9 +332,15 @@ class _NutPageState extends State<NutPage> {
                     name: name,
                     totalDosage: totalDosage,
                     count: count,
-                    userEmail: widget.userEmail,
+                    date: widget.selectedDate,
+                    userEmail:  widget.userEmail,
                   );
                   _addNutritionToFirestore(newNutrition);
+                  widget.onNutritionAdded(newNutrition);
+
+                  setState(() {
+                    _nutritions.add(newNutrition);
+                  });
 
                   Navigator.pop(context);
                 }
@@ -306,33 +353,31 @@ class _NutPageState extends State<NutPage> {
     );
   }
 
-  void _takeDosage(Nutrition nutrition, String dateString) {
+  void _takeDosage(Nutrition nutrition) {
     setState(() {
-      double currentDosage = nutrition.takenDosageByDate[dateString] ?? 0;
-      nutrition.takenDosageByDate[dateString] = currentDosage + nutrition.dosagePerCount;
+      nutrition.takenDosage += nutrition.dosagePerCount;
+      nutrition.updateTaken();
     });
     _updateNutritionInFirestore(nutrition);
   }
 
-  void _removeDosage(Nutrition nutrition, String dateString) {
+  void _removeDosage(Nutrition nutrition) {
     setState(() {
-      double currentDosage = nutrition.takenDosageByDate[dateString] ?? 0;
-      if (currentDosage >= nutrition.dosagePerCount) {
-        nutrition.takenDosageByDate[dateString] = currentDosage - nutrition.dosagePerCount;
-      }
+      nutrition.takenDosage -= nutrition.dosagePerCount;
+      nutrition.updateTaken();
     });
     _updateNutritionInFirestore(nutrition);
   }
 
-  double _calculateTotalPercentage(String dateString) {
+  double _calculatePercentage(List<Nutrition> nutritions) {
     double totalDosage = 0;
-    double totalTakenDosage = 0;
+    double takenDosage = 0;
 
-    for (var nutrition in _nutritions) {
+    for (var nutrition in nutritions) {
       totalDosage += nutrition.totalDosage;
-      totalTakenDosage += nutrition.takenDosageByDate[dateString] ?? 0;
+      takenDosage += nutrition.takenDosage;
     }
 
-    return totalDosage == 0 ? 0 : (totalTakenDosage / totalDosage) * 100;
+    return totalDosage == 0 ? 0 : (takenDosage / totalDosage) * 100;
   }
 }

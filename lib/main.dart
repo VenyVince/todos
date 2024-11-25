@@ -113,9 +113,11 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       NutPage(
         selectedDate: _selectedDay!,
+        onNutritionAdded: _onNutritionAdded,
+        onNutritionRemoved: _onNutritionRemoved,
         userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
       ),
-      MyPage(todos: _todoList, nutritions: _nutritionList, userEmail: widget.userEmail,),
+       MyPage(todos: _todoList, nutritions: _nutritionList, userEmail: widget.userEmail,),
     ];
   }
 
@@ -154,7 +156,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _updateMyPage() {
     setState(() {
-      _widgetOptions[2] = MyPage(todos: _todoList, nutritions: _nutritionList, userEmail: widget.userEmail,);
+      //_widgetOptions[2] = MyPage(todos: _todoList, nutritions: _nutritionList, userEmail: widget.userEmail,);
     });
   }
 
@@ -194,6 +196,8 @@ class _MyHomePageState extends State<MyHomePage> {
           );
           _widgetOptions[1] = NutPage(
             selectedDate: selectedDay,
+            onNutritionAdded: _onNutritionAdded,
+            onNutritionRemoved: _onNutritionRemoved,
             userEmail: FirebaseAuth.instance.currentUser?.email ?? '',
           );
         });
