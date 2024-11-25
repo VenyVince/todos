@@ -9,6 +9,7 @@ class Nutrition {
   int count;
   Map<String, double> takenDosageByDate;
   String userEmail;
+  List<int> repeatDays; 
 
   Nutrition({
     this.id = '',
@@ -16,6 +17,7 @@ class Nutrition {
     required this.totalDosage,
     required this.count,
     required this.userEmail,
+    this.repeatDays = const [], 
     Map<String, double>? takenDosageByDate,
   }) : this.takenDosageByDate = takenDosageByDate ?? {};
 
@@ -29,6 +31,7 @@ class Nutrition {
       totalDosage: data['totalDosage'],
       count: data['count'],
       userEmail: data['userEmail'],
+      repeatDays: List<int>.from(data['repeatDays'] ?? []),
       takenDosageByDate: Map<String, double>.from(data['takenDosageByDate'] ?? {}),
     );
   }
@@ -39,6 +42,7 @@ class Nutrition {
       'totalDosage': totalDosage,
       'count': count,
       'userEmail': userEmail,
+      'repeatDays': repeatDays,
       'takenDosageByDate': takenDosageByDate,
     };
   }
@@ -62,6 +66,7 @@ class _NutPageState extends State<NutPage> {
   final TextEditingController _nutritionController = TextEditingController();
   final TextEditingController _dosageController = TextEditingController();
   final TextEditingController _countController = TextEditingController();
+  final List<bool> _selectedDays = List.filled(7, false); 
 
   @override
   void initState() {
@@ -114,10 +119,18 @@ class _NutPageState extends State<NutPage> {
     }
   }
 
+  List<Nutrition> _filterNutritionsForToday() {
+    final today = widget.selectedDate.weekday - 1; // DateTime.weekday: 월요일=1, 일요일=7
+    return _nutritions.where((nutrition) {
+      return nutrition.repeatDays.contains(today) || nutrition.repeatDays.isEmpty;
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateString = DateFormat('yyyy-MM-dd').format(widget.selectedDate);
     double totalPercentage = _calculateTotalPercentage(dateString);
+    final filteredNutritions = _filterNutritionsForToday();
 
     return Scaffold(
       body: Column(
@@ -136,9 +149,9 @@ class _NutPageState extends State<NutPage> {
           ),
           Expanded(
             child: ListView.builder(
-              itemCount: _nutritions.length,
+              itemCount: filteredNutritions.length,
               itemBuilder: (context, index) {
-                return _buildNutritionItem(_nutritions[index], dateString);
+                return _buildNutritionItem(filteredNutritions[index], dateString);
               },
             ),
           ),
@@ -188,15 +201,12 @@ class _NutPageState extends State<NutPage> {
                   ),
                 ],
               ),
-              onTap: () => _showNutritionDetails(context, nutrition, dateString),
             ),
-            SizedBox(height: 4), // ListTile과 ProgressIndicator 사이의 간격
             LinearProgressIndicator(
               value: takenDosage / nutrition.totalDosage,
               backgroundColor: Colors.grey[200],
               valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
             ),
-            SizedBox(height: 4), // ProgressIndicator 아래의 간격
             Text(
               '${percentage.toStringAsFixed(1)}% 복용',
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
@@ -207,124 +217,121 @@ class _NutPageState extends State<NutPage> {
     );
   }
 
-  void _showNutritionDetails(BuildContext context, Nutrition nutrition, String dateString) {
-    double takenDosage = nutrition.takenDosageByDate[dateString] ?? 0;
-    showModalBottomSheet(
-      context: context,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      isScrollControlled: true,
-      builder: (context) => FractionallySizedBox(
-        heightFactor: 0.6,
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(nutrition.name, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              SizedBox(height: 10),
-              Text('총 복용량 : ${nutrition.totalDosage} mg'),
-              Text('섭취 개수 : ${nutrition.count}개'),
-              Text('1개당 복용량 : ${nutrition.dosagePerCount.toStringAsFixed(2)} mg'),
-              Text('현재 복용량 : ${takenDosage.toStringAsFixed(2)} mg'),
-              Text('복용한 개수 : ${(takenDosage / nutrition.dosagePerCount).toStringAsFixed(2)}개'),
-              SizedBox(height: 20),
-              LinearProgressIndicator(
-                value: takenDosage / nutrition.totalDosage,
-                backgroundColor: Colors.grey[200],
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   void _showAddNutritionDialog() {
+    _nutritionController.clear();
+    _dosageController.clear();
+    _countController.clear();
+    _selectedDays.fillRange(0, _selectedDays.length, false);
+
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text('영양제 추가'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _nutritionController,
-                decoration: InputDecoration(labelText: '영양제 이름'),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('영양제 추가'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _nutritionController,
+                    decoration: InputDecoration(labelText: '영양제 이름'),
+                  ),
+                  TextField(
+                    controller: _dosageController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: '총 복용량 (mg)'),
+                  ),
+                  TextField(
+                    controller: _countController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: '개수'),
+                  ),
+                  SizedBox(height: 10),
+                  Text('반복 설정 (요일 선택)', style: TextStyle(fontSize: 16)),
+                  Wrap(
+                    children: List.generate(7, (index) {
+                      return ChoiceChip(
+                        label: Text(['월', '화', '수', '목', '금', '토', '일'][index]),
+                        selected: _selectedDays[index],
+                        onSelected: (bool selected) {
+                          setState(() {
+                            _selectedDays[index] = selected;
+                          });
+                        },
+                      );
+                    }),
+                  ),
+                ],
               ),
-              TextField(
-                controller: _dosageController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(labelText: '총 복용량 (mg)'),
-              ),
-              TextField(
-                controller: _countController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(labelText: '개수'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text('취소'),
-            ),
-            TextButton(
-              onPressed: () {
-                final name = _nutritionController.text;
-                final totalDosage = int.tryParse(_dosageController.text) ?? 0;
-                final count = int.tryParse(_countController.text) ?? 0;
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: Text('취소'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final name = _nutritionController.text;
+                    final totalDosage = int.tryParse(_dosageController.text) ?? 0;
+                    final count = int.tryParse(_countController.text) ?? 0;
 
-                if (name.isNotEmpty && totalDosage > 0 && count > 0) {
-                  final newNutrition = Nutrition(
-                    name: name,
-                    totalDosage: totalDosage,
-                    count: count,
-                    userEmail: widget.userEmail,
-                  );
-                  _addNutritionToFirestore(newNutrition);
+                    if (name.isNotEmpty && totalDosage > 0 && count > 0) {
+                      final newNutrition = Nutrition(
+                        name: name,
+                        totalDosage: totalDosage,
+                        count: count,
+                        userEmail: widget.userEmail,
+                        repeatDays: List.generate(7, (index) => _selectedDays[index] ? index : -1).where((day) => day != -1).toList(),
+                      );
+                      _addNutritionToFirestore(newNutrition);
 
-                  Navigator.pop(context);
-                }
-              },
-              child: Text('추가'),
-            ),
-          ],
+                      Navigator.pop(context);
+                    }
+                  },
+                  child: Text('추가'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
   }
 
+  double _calculateTotalPercentage(String dateString) {
+    double totalTaken = 0.0;
+    double totalDosage = 0.0;
+
+    for (var nutrition in _nutritions) {
+      totalTaken += nutrition.takenDosageByDate[dateString] ?? 0;
+      totalDosage += nutrition.totalDosage;
+    }
+
+    return totalDosage > 0 ? (totalTaken / totalDosage) * 100 : 0;
+  }
+
   void _takeDosage(Nutrition nutrition, String dateString) {
     setState(() {
-      double currentDosage = nutrition.takenDosageByDate[dateString] ?? 0;
-      nutrition.takenDosageByDate[dateString] = currentDosage + nutrition.dosagePerCount;
+      nutrition.takenDosageByDate.update(
+        dateString,
+        (value) => value + nutrition.dosagePerCount,
+        ifAbsent: () => nutrition.dosagePerCount,
+      );
+      _updateNutritionInFirestore(nutrition);
     });
-    _updateNutritionInFirestore(nutrition);
   }
 
   void _removeDosage(Nutrition nutrition, String dateString) {
     setState(() {
-      double currentDosage = nutrition.takenDosageByDate[dateString] ?? 0;
-      if (currentDosage >= nutrition.dosagePerCount) {
-        nutrition.takenDosageByDate[dateString] = currentDosage - nutrition.dosagePerCount;
+      if (nutrition.takenDosageByDate.containsKey(dateString)) {
+        nutrition.takenDosageByDate.update(
+          dateString,
+          (value) => (value - nutrition.dosagePerCount).clamp(0.0, double.infinity),
+        );
+        _updateNutritionInFirestore(nutrition);
       }
     });
-    _updateNutritionInFirestore(nutrition);
-  }
-
-  double _calculateTotalPercentage(String dateString) {
-    double totalDosage = 0;
-    double totalTakenDosage = 0;
-
-    for (var nutrition in _nutritions) {
-      totalDosage += nutrition.totalDosage;
-      totalTakenDosage += nutrition.takenDosageByDate[dateString] ?? 0;
-    }
-
-    return totalDosage == 0 ? 0 : (totalTakenDosage / totalDosage) * 100;
   }
 }
