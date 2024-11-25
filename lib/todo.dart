@@ -12,7 +12,6 @@ class Todo {
   TimeOfDay? alarmTime;
   String? repeat;
   bool isDone;
-  List<DateTime>? futureDates;
   List<String> repeatDays;
   String userEmail;
 
@@ -24,7 +23,6 @@ class Todo {
     this.alarmTime,
     this.repeat,
     this.isDone = false,
-    this.futureDates,
     this.repeatDays = const [],
     required this.userEmail,
   });
@@ -94,8 +92,100 @@ class TodoPage extends StatefulWidget {
   @override
   _TodoPageState createState() => _TodoPageState();
 }
+//알림 기능 관련 입력 위젯(텍스트필드랑 슬라이더 융합해놓음)
+class AlarmTimeSelector extends StatefulWidget {
+  final Todo todo;
+  final Function(TimeOfDay) onTimeChanged; // 콜백 추가
 
-class _TodoPageState extends State<TodoPage> { //알림설정 파트
+  AlarmTimeSelector({required this.todo, required this.onTimeChanged});
+
+  @override
+  _AlarmTimeSelectorState createState() => _AlarmTimeSelectorState();
+}
+
+class _AlarmTimeSelectorState extends State<AlarmTimeSelector> {
+  late TextEditingController hourController;
+  late TextEditingController minuteController;
+
+  @override
+  void initState() {
+    super.initState();
+    hourController = TextEditingController(
+        text: widget.todo.alarmTime?.hour.toString() ?? '0');
+    minuteController = TextEditingController(
+        text: widget.todo.alarmTime?.minute.toString() ?? '0');
+  }
+
+  @override
+  void dispose() {
+    hourController.dispose();
+    minuteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                keyboardType: TextInputType.number,
+                maxLength: 2,
+                decoration: InputDecoration(
+                  labelText: '시 (0-23)',
+                  hintText: '0',
+                ),
+                onChanged: (value) {
+                  int hour = int.tryParse(value) ?? -1;
+                  if (hour >= 0 && hour < 24) {
+                    setState(() {
+                      widget.todo.alarmTime =
+                          TimeOfDay(hour: hour, minute: widget.todo.alarmTime
+                              ?.minute ?? 0);
+                      widget.onTimeChanged(widget.todo.alarmTime!);
+                    });
+                  }
+                },
+              ),
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                keyboardType: TextInputType.number,
+                maxLength: 2,
+                decoration: InputDecoration(
+                  labelText: '분 (0-59)',
+                  hintText: '0',
+                ),
+                onChanged: (value) {
+                  int minute = int.tryParse(value) ?? -1;
+                  if (minute >= 0 && minute < 60) {
+                    setState(() {
+                      widget.todo.alarmTime = TimeOfDay(hour: widget.todo
+                          .alarmTime?.hour ?? 0, minute: minute);
+                      widget.onTimeChanged(widget.todo.alarmTime!); // 콜백 호출
+                    });
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 10),
+        // 현재 설정된 알람 시간 표시
+        Text(
+          '현재 설정된 알람 시간: ${hourController.text} 시 ${minuteController.text} 분',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+}
+
+class _TodoPageState extends State<TodoPage> {
   // 할 일 목록 (Firestore에서 가져온 데이터 저장)
   List<Todo> _todoList = [];
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -104,66 +194,39 @@ class _TodoPageState extends State<TodoPage> { //알림설정 파트
   void initState() {
     super.initState();
     _loadTodos(); // 앱 시작 시 Firestore에서 데이터 불러오기
-    _initializeNotifications();
   }
 
-  Future<void> _scheduleNotification(Todo todo) async {
-    var scheduledNotificationDateTime = DateTime(
-      todo.date.year,
-      todo.date.month,
-      todo.date.day,
-      todo.alarmTime!.hour,
-      todo.alarmTime!.minute,
-    );
-
-    var androidPlatformChannelSpecifics = AndroidNotificationDetails(//알림설정 파트
-      'todo_alarm',
-      'Todo Alarms',
-      importance: Importance.max,
-      priority: Priority.high,
-      showWhen: true,
-    );
-
-    var platformChannelSpecifics = NotificationDetails(//알림설정 파트
-      android: androidPlatformChannelSpecifics,
-    );
-
-    // 아래 schedule 메소드 호출을 주석 처리합니다.
-    /*
-  await flutterLocalNotificationsPlugin.schedule(
-    todo.hashCode,
-    'Todo Reminder',
-    todo.title,
-    scheduledNotificationDateTime,
-    platformChannelSpecifics,
-  );
-  */
-  }
-
-  Future<void> _initializeNotifications() async {
-    var initializationSettingsAndroid = AndroidInitializationSettings('app_icon');//알림설정 파트
-    var initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-    );
-    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
-  }
-
+  // 알람 시간 선택 다이얼로그
   Future<void> _showAlarmSettingDialog(Todo todo) async {
-    TimeOfDay? selectedTime = await showTimePicker(
+    showDialog<void>(
       context: context,
-      initialTime: TimeOfDay.now(),
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('알람 시간 설정'),
+          content: AlarmTimeSelector(
+            todo: todo,
+            onTimeChanged: (newTime) {
+              setState(() {
+                todo.alarmTime = newTime;
+              });
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('확인'),
+            ),
+          ],
+        );
+      },
     );
-    if (selectedTime != null) {
-      setState(() {
-        todo.alarmTime = selectedTime;
-      });
-      await _updateTodoInFirestore(todo); // Firestore에서 할 일 업데이트
-    }
   }
 
   void _updateTodoList() {
-    widget.onTodoListChanged(_todoList); // 콜백 함수 호출
-    setState(() {}); // 현재 위젯의 상태만 업데
+    widget.onTodoListChanged(_todoList);
+    setState(() {});
   }
   Future<void> _updateTodoInFirestore(Todo todo) async {
     final todoCollection = FirebaseFirestore.instance.collection('todos');
@@ -178,15 +241,15 @@ class _TodoPageState extends State<TodoPage> { //알림설정 파트
   Future<void> _loadTodos() async {
     final todoCollection = FirebaseFirestore.instance.collection('todos');
     QuerySnapshot snapshot = await todoCollection
-        .where('userEmail', isEqualTo: widget.userEmail) // 현재 사용자의 Todo만 가져오기
+        .where('userEmail', isEqualTo: widget.userEmail) // 현재 사용자의 Todo 가져오기
         .get();
     setState(() {
       _todoList = snapshot.docs
-          .map((doc) => Todo.fromFirestore(doc))  // Firestore에서 Todo 객체로 변환
+          .map((doc) => Todo.fromFirestore(doc))  // Firestore 데이터 Todo 객체로 변환
           .toList();
       _updateTodoList();
     });
-    widget.onTodoListChanged(_todoList); // 상위 위젯에 변경 알림
+    widget.onTodoListChanged(_todoList);
   }
 
   // Firestore에 할 일 추가
@@ -225,42 +288,61 @@ class _TodoPageState extends State<TodoPage> { //알림설정 파트
         itemCount: filteredTodoList.length,
         itemBuilder: (context, index) {
           final todo = filteredTodoList[index];
-          // 각 Todo 항목을 Dismissible 위젯으로 감싸 스와이프로 삭제 가능하게 함
-          return Dismissible(
-            key: Key(todo.id),//key: UniqueKey(),
-            direction: DismissDirection.endToStart,
-            onDismissed: (direction) {
-              setState(() {
-                _todoList.remove(todo);
-                _generateFutureDates(todo);
-                _addFutureTodos(todo);
-              });
-              widget.onTodoRemoved(todo); // 할 일 삭제 콜백 호출
-              _deleteTodoFromFirestore(todo.id); // Firestore에서 할 일 삭제
-              _updateTodoList();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('${todo.title} 삭제됨')),
-              );
-            },
-            background: Container(
-              alignment: Alignment.centerRight,
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              color: Colors.red,
-              child: Icon(Icons.delete, color: Colors.white),
-            ),
-            child: ListTile(
-              title: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  todo.title,
-                  style: TextStyle(
-                    decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                  ),
+          return ListTile(
+            title: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                todo.title,
+                style: TextStyle(
+                  decoration: todo.isDone ? TextDecoration.lineThrough : null,
                 ),
               ),
-              trailing: _buildTrailingButtons(todo),
-              onTap: () => _showTodoDetails(context, todo),
             ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.edit, color: Colors.blue),
+                  onPressed: () => _showEditTitleDialog(context, todo), // 수정 다이얼로그 호출
+                ),
+                IconButton(
+                  icon: Icon(Icons.delete, color: Colors.red),
+                  onPressed: () async {
+                    // 삭제 확인 다이얼로그
+                    bool? confirmDelete = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: Text('삭제 확인'),
+                        content: Text('${todo.title}을(를) 삭제하시겠습니까?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false), // 취소
+                            child: Text('취소'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(true), // 삭제
+                            child: Text('삭제'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirmDelete == true) {
+                      setState(() {
+                        _todoList.remove(todo);
+                      });
+                      widget.onTodoRemoved(todo);
+                      await _deleteTodoFromFirestore(todo.id);
+                      _updateTodoList();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('${todo.title} 삭제됨')),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+            onTap: () => _showTodoDetails(context, todo),
           );
         },
       ),
@@ -342,19 +424,114 @@ class _TodoPageState extends State<TodoPage> { //알림설정 파트
             children: [
               Text(todo.title, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               SizedBox(height: 10),
-              _buildMemoField(todo),
+              _buildMemoField(todo), // 메모 필드
               SizedBox(height: 10),
-              _buildAlarmAndRepeatRow(todo),
+              _buildAlarmAndRepeatRow(todo), // 알람 및 반복 설정 UI를 행으로 묶기
               SizedBox(height: 20),
-              _buildCompletionButton(todo),
+              _buildCompletionButton(todo), // 완료 버튼
               Divider(),
-              _buildDeleteButton(todo),
+              _buildDeleteButton(todo), // 삭제 버튼
             ],
           ),
         ),
       ),
     );
   }
+
+// 알람 및 반복 설정을 위한 행 위젯
+  Widget _buildAlarmAndRepeatRow(Todo todo) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween, // 공간을 균등하게 분배
+      children: [
+        Expanded(child: _buildAlarmButton(todo)), // 알람 설정 버튼
+        SizedBox(width: 10), // 버튼 사이의 간격
+        Expanded(child: _buildRepeatButton(todo)), // 반복 설정 버튼
+      ],
+    );
+  }
+
+// 알림 설정 버튼 위젯
+  Widget _buildAlarmButton(Todo todo) {
+    return GestureDetector(
+      onTap: () => _showAlarmSettingDialog(todo), // 알람 시간 설정 다이얼로그 호출
+      child: _buildOptionBox(
+        icon: Icons.alarm,
+        text: todo.alarmTime != null
+            ? '${todo.alarmTime!.hour}:${todo.alarmTime!.minute.toString().padLeft(2, '0')}'
+            : '알람 시간',
+      ),
+    );
+  }
+
+// 반복 설정 버튼 위젯
+  Widget _buildRepeatButton(Todo todo) {
+    return GestureDetector(
+      onTap: () => _selectRepeatOption(context, todo), // 반복 옵션 선택 다이얼로그 호출
+      child: _buildOptionBox(
+        icon: Icons.repeat,
+        text: todo.repeat ?? '반복 설정',
+      ),
+    );
+  }
+
+// 옵션 박스 스타일링 함수
+  Widget _buildOptionBox({required IconData icon, required String text}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: Colors.blue),
+          SizedBox(width: 8),
+          Text(text),
+        ],
+      ),
+    );
+  }
+
+  // 반복 옵션 선택기
+  void _selectRepeatOption(BuildContext context, Todo todo) async {
+    String? selectedRepeat = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return SimpleDialog(
+          title: Text('반복 설정'),
+          children: <Widget>[
+            SimpleDialogOption(child: Text('매일'), onPressed: () => Navigator.pop(context, '매일')),
+            SimpleDialogOption(child: Text('매주'), onPressed: () => Navigator.pop(context, '매주')),
+            SimpleDialogOption(child: Text('매월'), onPressed: () => Navigator.pop(context, '매월')),
+            SimpleDialogOption(child: Text('반복 안함'), onPressed: () => Navigator.pop(context, '반복 안함')),
+          ],
+        );
+      },
+    );
+
+    if (selectedRepeat != null) {
+      setState(() {
+        todo.repeat = selectedRepeat == '반복 안함' ? null : selectedRepeat;
+
+        if (selectedRepeat == '매일') {
+          todo.repeatDays = ['월', '화', '수', '목', '금', '토', '일'];
+        } else if (selectedRepeat == '매주') {
+          // 요일 선택 다이얼로그 호출
+          _selectWeekDays(context, todo);
+        } else if (selectedRepeat == '매월') {
+          todo.repeatDays = [];
+        } else if (selectedRepeat == '반복 안함') {
+          todo.repeatDays = [];
+        }
+      });
+
+      await _updateTodoInFirestore(todo); // Firestore에서 할 일 업데이트
+      _updateTodoList(); // Todo 리스트 업데이트 호출
+    }
+  }
+
+
 
   // 메모 입력 필드
   Widget _buildMemoField(Todo todo) {
@@ -371,171 +548,6 @@ class _TodoPageState extends State<TodoPage> { //알림설정 파트
         contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       ),
       maxLines: 3,
-    );
-  }
-
-  // 알림 및 반복 설정 버튼
-  Widget _buildAlarmAndRepeatRow(Todo todo) {
-    return Row(
-      children: [
-        _buildAlarmOption(todo),
-        SizedBox(width: 10),
-        _buildRepeatOption(todo),
-      ],
-    );
-  }
-
-  // 알림 옵션 생성 함수
-  Widget _buildAlarmOption(Todo todo) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => _selectAlarmTime(context, todo),
-        child: _buildOptionBox(
-          icon: Icons.alarm,
-          text: todo.alarmTime != null
-              ? '${todo.alarmTime!.hour}:${todo.alarmTime!.minute.toString().padLeft(2, '0')}'
-              : '알람 시간',
-        ),
-      ),
-    );
-  }
-
-  // 반복 옵션 생성 함수
-  Widget _buildRepeatOption(Todo todo) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => _selectRepeatOption(context, todo),
-        child: _buildOptionBox(
-          icon: Icons.repeat,
-          text: todo.repeat ?? '반복 설정',
-        ),
-      ),
-    );
-  }
-
-  // 알림 시간 선택기
-  Future<void> _selectAlarmTime(BuildContext context, Todo todo) async {
-    TimeOfDay? newTime = await showTimePicker(
-      context: context,
-      initialTime: todo.alarmTime ?? TimeOfDay.now(),
-    );
-    if (newTime != null) {
-      setState(() {
-        todo.alarmTime = newTime;
-        _generateFutureDates(todo);
-      });
-      _updateTodoList();
-      // 여기에 알람 설정 로직 추가
-      _scheduleNotification(todo);
-    }
-  }
-
-  // 반복 옵션 선택기
-  void _selectRepeatOption(BuildContext context, Todo todo) async {
-    String? selectedRepeat = await showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return SimpleDialog(
-          title: Text('반복 설정'),
-          children: <Widget>[
-            _buildRepeatOptionDialog('매일'),
-            _buildRepeatOptionDialog('매주'),
-            _buildRepeatOptionDialog('매월'),
-            _buildRepeatOptionDialog('반복 안함'),
-          ],
-        );
-      },
-    );
-    if (selectedRepeat != null) {
-      setState(() {
-        todo.repeat = selectedRepeat == '반복 안함' ? null : selectedRepeat;
-        if (selectedRepeat == '매일') {
-          todo.repeatDays = ['월', '화', '수', '목', '금', '토', '일'];
-        } else if (selectedRepeat == '매주') {
-          if (todo.repeatDays.isEmpty) {
-            todo.repeatDays = ['월']; // 기본값으로 월요일 선택
-          }
-          _selectWeekDays(context, todo);
-        } else if (selectedRepeat == '매월') {
-          todo.repeatDays = [];
-        } else if (selectedRepeat == '반복 안함') {
-          todo.repeatDays = [];
-        }
-      });
-      await _updateTodoInFirestore(todo);
-      _generateFutureDates(todo);
-      _updateTodoList();
-    }
-  }
-
-  Future<void> _generateFutureDates(Todo todo) async {
-    if (todo.repeat == null || todo.alarmTime == null) {
-      todo.futureDates = null;
-      return;
-    }
-
-    List<Todo> futureTodos = [];
-    DateTime currentDate = todo.date;
-
-    for (int i = 0; i < 52; i++) { // 1년치 생성
-      switch (todo.repeat) {
-        case '매일':
-          currentDate = currentDate.add(Duration(days: 1));
-          break;
-        case '매주':
-          if (todo.repeatDays.isNotEmpty) {
-            do {
-              currentDate = currentDate.add(Duration(days: 1));
-            } while (!todo.repeatDays.contains(['월', '화', '수', '목', '금', '토', '일'][currentDate.weekday - 1]));
-          }
-          break;
-        case '매월':
-        // 다음 달의 같은 날짜로 설정
-          currentDate = DateTime(currentDate.year, currentDate.month + 1, currentDate.day);
-          // 만약 다음 달에 해당 날짜가 없다면 (예: 1월 31일 -> 2월 28일)
-          if (currentDate.day != todo.date.day) {
-            currentDate = DateTime(currentDate.year, currentDate.month, 0); // 해당 월의 마지막 날로 설정
-          }
-          break;
-        default:
-          return;
-      }
-
-      Todo newTodo = Todo(
-        title: todo.title,
-        date: currentDate,
-        memo: todo.memo,
-        alarmTime: todo.alarmTime,
-        repeat: todo.repeat,
-        repeatDays: todo.repeatDays,
-        userEmail: widget.userEmail,
-      );
-      futureTodos.add(newTodo);
-      await _addTodoToFirestore(newTodo); // 새로운 할 일을 Firestore에 추가
-    }
-
-    setState(() {
-      _todoList.addAll(futureTodos);
-    });
-    _updateTodoList();
-  }
-
-  // 옵션 박스 스타일링
-  Widget _buildOptionBox({required IconData icon, required String text}) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: Colors.blue),
-          SizedBox(width: 8),
-          Text(text),
-        ],
-      ),
     );
   }
 
@@ -681,34 +693,7 @@ class _TodoPageState extends State<TodoPage> { //알림설정 파트
         date1.day == date2.day;
   }
 
-// 특정 날짜의 Todo 항목들을 반환하는 함수
-  List<Todo> _getEventsForDay(DateTime day) {
-    return _todoList.where((todo) =>
-    isSameDay(todo.date, day) ||
-        (todo.futureDates?.any((futureDate) => isSameDay(futureDate, day)) ??
-            false)
-    ).toList();
-  }
 
-// 미래 날짜의 Todo 항목들을 추가하는 함수
-  void _addFutureTodos(Todo originalTodo) {
-    if (originalTodo.futureDates == null) return;
-
-    for (DateTime futureDate in originalTodo.futureDates!) {
-      Todo newTodo = Todo(
-        title: originalTodo.title,
-        date: futureDate,
-        memo: originalTodo.memo,
-        alarmTime: originalTodo.alarmTime,
-        repeat: originalTodo.repeat,
-        userEmail: originalTodo.userEmail,
-      );
-      setState(() {
-        _todoList.add(newTodo);
-      });
-    }
-    _updateTodoList();
-  }
 // Todo 페이지의 UI를 구성하는 build 메서드
 
 // Todo 항목의 반복 설정 텍스트를 반환하는 함수
@@ -720,143 +705,6 @@ class _TodoPageState extends State<TodoPage> { //알림설정 파트
     }
     if (todo.repeat == '매월') return '매월';
     return '반복 없음';
-  }
-
-// 반복 요일을 선택하는 옵션을 생성하는 위젯
-  Widget _buildRepeatDaysOption(Todo todo) {
-    return StatefulBuilder(
-        builder: (BuildContext context, StateSetter setState) {
-          return Wrap(
-            spacing: 8.0,
-            children: ['월', '화', '수', '목', '금', '토', '일'].map((day) {
-              return FilterChip(
-                label: Text(day),
-                selected: todo.repeatDays.contains(day),
-                onSelected: (bool selected) {
-                  setState(() {
-                    if (selected) {
-                      todo.repeatDays.add(day);
-                    } else {
-                      todo.repeatDays.remove(day);
-                    }
-                    if (todo.repeatDays.length == 7) {
-                      todo.repeat = '매일';
-                    } else if (todo.repeatDays.isNotEmpty) {
-                      todo.repeat = '매주';
-                    } else {
-                      todo.repeat = null;
-                    }
-                    _generateFutureDates(todo);
-                  });
-                  _updateTodoList();
-                },
-              );
-            }).toList(),
-          );
-        }
-    );
-  }
-
-  // 반복 설정을 위한 다이얼로그를 표시하는 함수
-  void _showRepeatOptionsDialog(BuildContext context, Todo todo) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) {
-            return AlertDialog(
-              title: Text('반복 설정'),
-              content: _buildRepeatCheckboxes(todo, setState), // 반복 체크박스 UI 생성
-              actions: <Widget>[
-                TextButton(
-                  child: Text('취소'),
-                  onPressed: () => Navigator.of(context).pop(), // 다이얼로그 닫기
-                ),
-                TextButton(
-                  child: Text('확인'),
-                  onPressed: () {
-                    _updateTodoList(); // Todo 리스트 업데이트
-                    Navigator.of(context).pop(); // 다이얼로그 닫기
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-// 반복 설정을 위한 체크박스 UI를 생성하는 함수
-  Widget _buildRepeatCheckboxes(Todo todo, StateSetter setState) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        CheckboxListTile(
-          title: Text('반복 안함'),
-          value: todo.repeat == null,
-          onChanged: (bool? value) {
-            setState(() {
-              todo.repeat = value! ? null : '매주';
-              todo.repeatDays = [];
-            });
-          },
-        ),
-        CheckboxListTile(
-          title: Text('매일'),
-          value: todo.repeat == '매일',
-          onChanged: (bool? value) {
-            setState(() {
-              todo.repeat = value! ? '매일' : null;
-              todo.repeatDays =
-              value ? ['월', '화', '수', '목', '금', '토', '일'] : [];
-            });
-          },
-        ),
-        CheckboxListTile(
-          title: Text('매주'),
-          value: todo.repeat == '매주',
-          onChanged: (bool? value) {
-            setState(() {
-              todo.repeat = value! ? '매주' : null;
-              if (!value) todo.repeatDays = [];
-            });
-          },
-        ),
-        if (todo.repeat == '매주')
-          Wrap(
-            spacing: 8.0,
-            children: ['월', '화', '수', '목', '금', '토', '일'].map((day) {
-              return FilterChip(
-                label: Text(day),
-                selected: todo.repeatDays.contains(day),
-                onSelected: (bool selected) {
-                  setState(() {
-                    if (selected) {
-                      todo.repeatDays.add(day);
-                    } else {
-                      todo.repeatDays.remove(day);
-                    }
-                    if (todo.repeatDays.isEmpty) {
-                      todo.repeat = null;
-                    }
-                  });
-                },
-              );
-            }).toList(),
-          ),
-        CheckboxListTile(
-          title: Text('매월'),
-          value: todo.repeat == '매월',
-          onChanged: (bool? value) {
-            setState(() {
-              todo.repeat = value! ? '매월' : null;
-              todo.repeatDays = [];
-            });
-          },
-        ),
-      ],
-    );
   }
 
   void _selectWeekDays(BuildContext context, Todo todo) {
@@ -894,7 +742,6 @@ class _TodoPageState extends State<TodoPage> { //알림설정 파트
                   onPressed: () async {
                     Navigator.of(context).pop();
                     await _updateTodoInFirestore(todo);
-                    _generateFutureDates(todo);
                   },
                 ),
               ],
